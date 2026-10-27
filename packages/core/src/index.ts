@@ -3,6 +3,7 @@ export * from './language.js';
 export * from './ids.js';
 export * from './path.js';
 export * from './locator.js';
+export * from './position.js';
 export * from './txt.js';
 export * from './import-book.js';
 export * from './epub/archive.js';
