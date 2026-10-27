@@ -1,6 +1,6 @@
 import type { Block, Mark, Sentence } from '@garagara/core';
 import type { StoredChapter } from '@garagara/storage';
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 
 import { buildFragments } from './render-fragments.js';
 
@@ -110,7 +110,7 @@ function BlockView({ block, sentences }: { block: Block; sentences: Sentence[] }
   }
 }
 
-export function ChapterView({ chapter }: { chapter: StoredChapter }) {
+export const ChapterView = memo(function ChapterView({ chapter }: { chapter: StoredChapter }) {
   const byBlock = useMemo(() => {
     const map = new Map<string, Sentence[]>();
     for (const sentence of chapter.sentences) {
@@ -128,4 +128,4 @@ export function ChapterView({ chapter }: { chapter: StoredChapter }) {
       ))}
     </article>
   );
-}
+});

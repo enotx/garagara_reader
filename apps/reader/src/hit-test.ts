@@ -1,5 +1,7 @@
 import type { Block, Sentence } from '@garagara/core';
-import { tokenize, type Token } from '@garagara/lang-en';
+import type { Token } from '@garagara/lang-en';
+
+import { tokensForBlock } from './text-analysis.js';
 
 export interface HitTestResult {
   block: Block;
@@ -93,7 +95,7 @@ export function hitTestPoint(
     return undefined;
   }
   const blockOffset = textOffsetInSpan(node, range.startOffset, span);
-  const token = snapToWord(tokenize(block.text), blockOffset);
+  const token = snapToWord(tokensForBlock(block), blockOffset);
   if (!token) {
     return undefined;
   }

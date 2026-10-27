@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ChapterView } from './ChapterView.js';
 import { createGestureState, reduceGesture, type GestureEvent } from './gestures.js';
+import { IconChevronLeft, IconChevronRight, IconX } from './icons';
 import { buildPageMap, type PageInfo } from './page-map.js';
 import { hitTestPoint, type HitTestResult } from './hit-test.js';
 import { collectPageFragments } from './page-map-dom.js';
@@ -282,6 +283,7 @@ export function ReaderView({
         }
       } else if (command.type === 'closeCard') {
         setCard(null);
+        setHit(null);
       }
     }
   }
@@ -300,8 +302,44 @@ export function ReaderView({
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  useEffect(() => {
+    if (typeof CSS === 'undefined' || !CSS.highlights) {
+      return;
+    }
+    CSS.highlights.delete('word-selected');
+    const content = contentRef.current;
+    if (!hit || !content) {
+      return;
+    }
+    const blockRoot = content.querySelector<HTMLElement>(
+      `[data-block-id="${CSS.escape(hit.block.id)}"]`,
+    );
+    if (!blockRoot) {
+      return;
+    }
+    for (const element of blockRoot.querySelectorAll<HTMLElement>('[data-block][data-start]')) {
+      const spanStart = Number(element.dataset.start ?? -1);
+      const spanEnd = Number(element.dataset.end ?? -1);
+      if (hit.token.start < spanStart || hit.token.end > spanEnd) {
+        continue;
+      }
+      const node = element.firstChild;
+      if (!(node instanceof Text)) {
+        continue;
+      }
+      const range = document.createRange();
+      range.setStart(node, hit.token.start - spanStart);
+      range.setEnd(node, hit.token.end - spanStart);
+      CSS.highlights.set('word-selected', new Highlight(range));
+      break;
+    }
+    return () => {
+      CSS.highlights.delete('word-selected');
+    };
+  }, [hit]);
+
   return (
-    <div className="reader">
+    <div className="reader" data-menu-open={gesture.menuOpen ? 'true' : 'false'}>
       <header
         className="reader-header"
         onClick={() => {
@@ -311,46 +349,72 @@ export function ReaderView({
       >
         <button
           type="button"
-          className="reader-button"
+          className="reader-button reader-back"
+          aria-label="返回书架"
           onClick={(event) => {
             event.stopPropagation();
             onExit();
           }}
         >
-          书架
+          <IconChevronLeft size={22} />
         </button>
         <div className="reader-heading">
           <strong>{book.title}</strong>
           <span>{chapter.title}</span>
         </div>
+        <span className="reader-percent" aria-hidden="true">
+          {overallPercent}%
+        </span>
       </header>
 
       {gesture.menuOpen ? (
         <div className="reader-menu reader-menu-top" data-menu="top">
-          <select
-            className="theme-select"
-            value={theme}
-            aria-label="主题"
-            onChange={(event) => onThemeChange(event.target.value as Theme)}
-          >
-            {THEMES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-          <select
-            className="chapter-select"
-            value={chapter.index}
-            aria-label="选择章节"
-            onChange={(event) => onChapterChange(Number(event.target.value))}
-          >
-            {chapters.map((item) => (
-              <option key={item.id} value={item.index}>
-                {item.title}
-              </option>
-            ))}
-          </select>
+          <div className="menu-top-row">
+            <button
+              type="button"
+              className="reader-button"
+              aria-label="关闭菜单"
+              onClick={() => applyGesture({ type: 'tap', target: 'chrome' })}
+            >
+              <IconX size={18} />
+            </button>
+            <div className="menu-title">
+              <span>阅读设置</span>
+              <strong>{chapter.title}</strong>
+            </div>
+          </div>
+          <div className="menu-settings-row">
+            <label className="menu-field">
+              <span className="menu-field-label">主题</span>
+              <select
+                className="theme-select"
+                value={theme}
+                aria-label="主题"
+                onChange={(event) => onThemeChange(event.target.value as Theme)}
+              >
+                {THEMES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="menu-field">
+              <span className="menu-field-label">章节</span>
+              <select
+                className="chapter-select"
+                value={chapter.index}
+                aria-label="选择章节"
+                onChange={(event) => onChapterChange(Number(event.target.value))}
+              >
+                {chapters.map((item) => (
+                  <option key={item.id} value={item.index}>
+                    {item.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       ) : null}
 
@@ -393,6 +457,7 @@ export function ReaderView({
               if (found) {
                 setNote(found);
                 setCard(null);
+                setHit(null);
                 setGesture(createGestureState());
                 return;
               }
@@ -445,7 +510,6 @@ export function ReaderView({
 
       {card ? (
         <WordCard
-          key={`${card.hit.block.id}:${card.hit.token.start}`}
           hit={card.hit}
           {...(() => {
             const sentence = chapter.sentences.find((item) => item.id === card.hit.sentenceId);
@@ -454,6 +518,7 @@ export function ReaderView({
           placement={card.placement}
           onClose={() => {
             setCard(null);
+            setHit(null);
             setGesture(createGestureState());
           }}
         />
@@ -469,7 +534,7 @@ export function ReaderView({
               aria-label="关闭脚注"
               onClick={() => setNote(null)}
             >
-              ×
+              <IconX size={18} />
             </button>
           </header>
           <p>{note.text}</p>
@@ -486,32 +551,37 @@ export function ReaderView({
         <button
           type="button"
           className="reader-button"
+          aria-label="上一页"
           onClick={(event) => {
             event.stopPropagation();
             previousPage();
           }}
           disabled={page === 0 && !previousChapter}
         >
-          上一页
+          <IconChevronLeft size={20} />
         </button>
-        <div className="reader-progress">
-          <span>
+        <div className="reader-progress" aria-live="polite">
+          <span className="progress-chapter">
             第 {chapter.index + 1} / {chapters.length} 章
           </span>
-          <span>
+          <span className="progress-separator" aria-hidden="true">
+            ·
+          </span>
+          <span className="progress-meta">
             {page + 1} / {pageCount} 页 · {overallPercent}%
           </span>
         </div>
         <button
           type="button"
           className="reader-button"
+          aria-label="下一页"
           onClick={(event) => {
             event.stopPropagation();
             nextPage();
           }}
           disabled={page >= pageCount - 1 && !nextChapter}
         >
-          下一页
+          <IconChevronRight size={20} />
         </button>
       </footer>
 
@@ -526,6 +596,7 @@ export function ReaderView({
             >
               A−
             </button>
+            <span className="font-scale-value">{fontScale}%</span>
             <button
               type="button"
               className="reader-button"
@@ -535,7 +606,7 @@ export function ReaderView({
               A+
             </button>
           </div>
-          <span className="menu-note">字号 {fontScale}%</span>
+          <span className="menu-note">正文分页只在排版变化时重算</span>
         </div>
       ) : null}
     </div>

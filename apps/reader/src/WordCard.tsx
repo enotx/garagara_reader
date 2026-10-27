@@ -1,10 +1,12 @@
 import type { Sentence } from '@garagara/core';
 import type { DictionaryEntry, PhraseMatch } from '@garagara/lang-en';
-import { lemmatize, matchPhrases, tokenize } from '@garagara/lang-en';
+import { lemmatize } from '@garagara/lang-en';
 import { useEffect, useRef, useState } from 'react';
 
 import { loadDictionary } from './dictionary.js';
+import { IconX } from './icons';
 import type { HitTestResult } from './hit-test.js';
+import { phrasesForBlock, tokensForBlock } from './text-analysis.js';
 
 interface CardData {
   loading: boolean;
@@ -31,19 +33,20 @@ export function WordCard({
     lemma: hit.token.surface.toLowerCase(),
     entries: [],
   });
-  const [onlyX, setOnlyX] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const pointerStart = useRef<number | null>(null);
+  const cardRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let active = true;
+    cardRef.current?.scrollTo({ top: 0 });
     setData({
       loading: true,
       available: true,
       lemma: hit.token.surface.toLowerCase(),
       entries: [],
     });
-    setOnlyX(false);
+    setExpanded(false);
     loadDictionary()
       .then(async (dictionary) => {
         if (!active) {
@@ -58,9 +61,9 @@ export function WordCard({
           });
           return;
         }
-        const tokens = tokenize(hit.block.text);
+        const tokens = tokensForBlock(hit.block);
         const lemmas = lemmatize(hit.token, tokens, dictionary);
-        const phrase = matchPhrases(tokens, dictionary).find(
+        const phrase = phrasesForBlock(hit.block, dictionary).find(
           (match) => hit.token.start >= match.start && hit.token.end <= match.end,
         );
         const lemma = phrase?.lemma ?? lemmas[0] ?? hit.token.surface.toLowerCase();
@@ -106,12 +109,10 @@ export function WordCard({
         ? '短语'
         : ''
       : `${hit.token.surface} → ${title}${data.phrase ? ' · 短语' : ''}`;
-  const visibleEntries = onlyX
-    ? data.entries.filter((entry) => entry.headword.toLowerCase() === title.toLowerCase())
-    : data.entries;
 
   return (
     <aside
+      ref={cardRef}
       className={`word-card ${placement}${expanded ? ' expanded' : ''}`}
       data-word-card
       data-card-title={title}
@@ -139,58 +140,50 @@ export function WordCard({
     >
       <div className="word-card-handle" aria-hidden="true" />
       <header className="word-card-header">
-        <div>
+        <div className="word-card-titleblock">
+          <span className="word-card-kicker">
+            {data.phrase ? '短语' : '词条'} · {expanded ? '全屏' : '上滑展开'}
+          </span>
           <h3>{title}</h3>
           {forms ? <p className="word-forms">{forms}</p> : null}
         </div>
-        <button type="button" className="reader-button" aria-label="关闭词卡" onClick={onClose}>
-          ×
+        <button
+          type="button"
+          className="icon-button word-card-close"
+          aria-label="关闭词卡"
+          onClick={onClose}
+        >
+          <IconX size={18} />
         </button>
       </header>
 
-      {data.loading ? <p className="muted">正在查词典…</p> : null}
-      {!data.loading && !data.available ? <p className="muted">词典文件不可用。</p> : null}
-      {!data.loading && data.available && data.entries.length === 0 ? (
-        <p className="muted">没有找到释义。</p>
-      ) : null}
-      {!data.loading && data.available && data.entries.length > 0 && visibleEntries.length === 0 ? (
-        <p className="muted">没有匹配的释义。</p>
+      {sentence ? (
+        <blockquote className="word-context">
+          {hit.block.text.slice(sentence.start, sentence.end)}
+        </blockquote>
       ) : null}
 
+      {data.loading ? <p className="muted word-card-status">正在查词典…</p> : null}
+      {!data.loading && !data.available ? (
+        <p className="muted word-card-status">词典文件不可用。</p>
+      ) : null}
+      {!data.loading && data.available && data.entries.length === 0 ? (
+        <p className="muted word-card-status">没有找到释义。</p>
+      ) : null}
       {data.entries.length > 0 ? (
-        <div className="word-card-actions">
-          <button
-            type="button"
-            className="reader-button"
-            aria-pressed={onlyX}
-            onClick={() => setOnlyX((value) => !value)}
-          >
-            只看 {title}
-          </button>
-          {onlyX ? (
-            <button type="button" className="reader-button" onClick={() => setOnlyX(false)}>
-              显示全部
-            </button>
-          ) : null}
+        <div className="word-entries">
+          {data.entries.map((entry, index) => (
+            <article key={`${entry.headword}:${index}`} className="word-entry">
+              <h4>
+                {entry.headword}
+                {entry.pos ? <span className="word-pos">{entry.pos}</span> : null}
+              </h4>
+              <p className="word-translation">{entry.translation}</p>
+              {entry.bnc ? <p className="word-rank">BNC {entry.bnc}</p> : null}
+            </article>
+          ))}
         </div>
       ) : null}
-
-      {sentence ? (
-        <p className="word-context">{hit.block.text.slice(sentence.start, sentence.end)}</p>
-      ) : null}
-
-      <div className="word-entries">
-        {visibleEntries.map((entry, index) => (
-          <article key={`${entry.headword}:${index}`} className="word-entry">
-            <h4>
-              {entry.headword}
-              {entry.pos ? <span className="word-pos">{entry.pos}</span> : null}
-            </h4>
-            <p className="word-translation">{entry.translation}</p>
-            {entry.bnc ? <p className="word-rank">BNC {entry.bnc}</p> : null}
-          </article>
-        ))}
-      </div>
     </aside>
   );
 }

@@ -44,7 +44,7 @@ async function openCardBook(page: Page): Promise<void> {
   await page.waitForTimeout(250);
 }
 
-test('opens a dictionary card, expands and filters it', async ({ page }) => {
+test('opens a dictionary card, replaces it and expands it', async ({ page }) => {
   await openCardBook(page);
   const point = await wordPoint(page, 'Wonderland');
   expect(point).not.toBeNull();
@@ -56,13 +56,14 @@ test('opens a dictionary card, expands and filters it', async ({ page }) => {
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute('data-card-title', 'wonderland');
   await expect(card).toContainText('奇境');
-  await expect(page.getByRole('button', { name: '只看 wonderland' })).toBeVisible();
 
-  await page.getByRole('button', { name: '只看 wonderland' }).click();
-  await expect(page.getByRole('button', { name: '只看 wonderland' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  const next = await wordPoint(page, 'Alice');
+  expect(next).not.toBeNull();
+  if (next) {
+    await page.mouse.click(next.x, next.y);
+  }
+  await expect(card).toHaveAttribute('data-card-title', 'alice');
+  await expect(card).toContainText('ALICE');
 
   const box = await card.boundingBox();
   if (box) {
