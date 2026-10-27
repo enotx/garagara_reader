@@ -22,5 +22,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@garagara/core": "workspace:*",
+    "@garagara/lang-en": "workspace:*"
   }
 }

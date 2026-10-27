@@ -80,7 +80,14 @@ importers:
 
   packages/playback: {}
 
-  packages/storage: {}
+  packages/storage:
+    dependencies:
+      '@garagara/core':
+        specifier: workspace:*
+        version: link:../core
+      '@garagara/lang-en':
+        specifier: workspace:*
+        version: link:../lang-en
 
 packages:
 
