@@ -18,5 +18,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@garagara/storage": "workspace:*",
+    "@types/node": "^26.6.5"
   }
 }

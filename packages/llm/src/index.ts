@@ -10,3 +10,6 @@ export {
   type LlmProviderConfig,
   type LlmProviderOptions,
 } from './provider.js';
+export { LlmCache, type LlmCacheOptions } from './cache.js';
+export { buildLlmCacheKey, type LlmCacheKeyInput } from './cache-key.js';
+export { LLM_PROMPT_VERSIONS, promptVersionFor, type LlmTask } from './prompts.js';

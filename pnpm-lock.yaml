@@ -88,7 +88,14 @@ importers:
 
   packages/lang-en: {}
 
-  packages/llm: {}
+  packages/llm:
+    devDependencies:
+      '@garagara/storage':
+        specifier: workspace:*
+        version: link:../storage
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
 
   packages/playback: {}
 
