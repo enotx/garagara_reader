@@ -35,6 +35,15 @@ importers:
 
   apps/reader:
     dependencies:
+      '@garagara/core':
+        specifier: workspace:^
+        version: link:../../packages/core
+      '@garagara/lang-en':
+        specifier: workspace:^
+        version: link:../../packages/lang-en
+      '@garagara/storage':
+        specifier: workspace:^
+        version: link:../../packages/storage
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -57,6 +66,9 @@ importers:
       vite:
         specifier: ^8.3.5
         version: 8.3.5(@types/node@26.6.5)
+      wa-sqlite:
+        specifier: ^1.0.0
+        version: 1.0.0
 
   packages/core:
     dependencies:
@@ -88,6 +100,9 @@ importers:
       '@garagara/lang-en':
         specifier: workspace:*
         version: link:../lang-en
+      wa-sqlite:
+        specifier: ^1.0.0
+        version: 1.0.0
 
 packages:
 
@@ -952,6 +967,9 @@ packages:
       jsdom:
         optional: true
 
+  wa-sqlite@1.0.0:
+    resolution: {integrity: sha512-Kyybo5/BaJp76z7gDWGk2J6Hthl4NIPsE+swgraEjy3IY6r5zIR02wAs1OJH4XtJp1y3puj3Onp5eMGS0z7nUA==}
+
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
     engines: {node: '>= 8'}
@@ -1693,6 +1711,8 @@ snapshots:
       '@types/node': 26.6.5
     transitivePeerDependencies:
       - msw
+
+  wa-sqlite@1.0.0: {}
 
   which@2.0.2:
     dependencies:

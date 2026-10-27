@@ -14,6 +14,10 @@
     "./node": {
       "types": "./dist/node-adapter.d.ts",
       "import": "./dist/node-adapter.js"
+    },
+    "./browser": {
+      "types": "./dist/browser-adapter.d.ts",
+      "import": "./dist/browser-adapter.js"
     }
   },
   "files": [
@@ -25,6 +29,7 @@
   },
   "dependencies": {
     "@garagara/core": "workspace:*",
-    "@garagara/lang-en": "workspace:*"
+    "@garagara/lang-en": "workspace:*",
+    "wa-sqlite": "^1.0.0"
   }
 }

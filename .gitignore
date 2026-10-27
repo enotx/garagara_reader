@@ -6,3 +6,6 @@ coverage/
 .vite/
 playwright-report/
 test-results/
+
+# Generated wa-sqlite assets
+apps/reader/public/wa-sqlite/

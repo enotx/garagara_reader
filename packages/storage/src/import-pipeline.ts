@@ -89,21 +89,21 @@ export async function importBookToStorage(
         for (const [index, range] of sentences.entries()) {
           const id = sentenceId(book.bookId, chapter.index, block.index, index);
           const text = block.text.slice(range.start, range.end);
-          const result = await adapter.run(
+          await adapter.run(
             `INSERT INTO sentences
               (id, bookId, blockId, chapterIndex, "index", start, end, text)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [id, book.bookId, block.id, chapter.index, index, range.start, range.end, text],
           );
-          stats.sentences += result.changes;
+          stats.sentences += 1;
 
           const chunks = chunk(text);
           for (const [chunkIndex, chunkRange] of chunks.entries()) {
-            const chunkResult = await adapter.run(
+            await adapter.run(
               'INSERT INTO chunks (sentenceId, "index", start, end) VALUES (?, ?, ?, ?)',
               [id, chunkIndex, range.start + chunkRange.start, range.start + chunkRange.end],
             );
-            stats.chunks += chunkResult.changes;
+            stats.chunks += 1;
           }
         }
       }
