@@ -50,6 +50,8 @@ test('changing font size keeps the current page text', async ({ page }) => {
   await expect(page.getByText(/已导入《alice》/)).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: /alice/ }).click();
   await expect(page.locator('.reader-viewport')).toBeVisible();
+  await page.locator('.reader-header').click();
+  await expect(page.locator('[data-menu="top"]')).toBeVisible();
 
   await page.getByRole('button', { name: '下一页' }).click();
   await expect(page.locator('.reader-progress')).toContainText('页');

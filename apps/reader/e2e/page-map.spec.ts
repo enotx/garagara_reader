@@ -6,6 +6,8 @@ test('builds a page map and splits sentences across pages', async ({ page }) => 
   await page.locator('input[type="file"]').setInputFiles('../../fixtures/txt/alice.txt');
   await expect(page.getByText(/已导入《alice》/)).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: /alice/ }).click();
+  await page.locator('.reader-header').click();
+  await expect(page.locator('[data-menu="top"]')).toBeVisible();
   const viewport = page.locator('.reader-viewport');
   await expect(viewport).toBeVisible();
 

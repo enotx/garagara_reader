@@ -2,6 +2,7 @@ import type { BookSummary, ChapterSummary, StoredChapter } from '@garagara/stora
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ChapterView } from './ChapterView.js';
+import { createGestureState, reduceGesture, type GestureEvent } from './gestures.js';
 import { buildPageMap, type PageInfo } from './page-map.js';
 import { hitTestPoint, type HitTestResult } from './hit-test.js';
 import { collectPageFragments } from './page-map-dom.js';
@@ -63,6 +64,7 @@ export function ReaderView({
   const [fontScale, setFontScale] = useState(initialFontScale);
   const [fontsReady, setFontsReady] = useState(false);
   const [pageMap, setPageMap] = useState<PageInfo[]>([]);
+  const [gesture, setGesture] = useState(createGestureState);
 
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -260,6 +262,20 @@ export function ReaderView({
     }
   }
 
+  function applyGesture(event: GestureEvent): void {
+    const result = reduceGesture(gesture, event);
+    setGesture(result.state);
+    for (const command of result.commands) {
+      if (command.type === 'turnPage') {
+        if (command.direction === 'next') {
+          nextPage();
+        } else {
+          previousPage();
+        }
+      }
+    }
+  }
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
@@ -276,57 +292,54 @@ export function ReaderView({
 
   return (
     <div className="reader">
-      <header className="reader-header">
-        <button type="button" className="reader-button" onClick={onExit}>
+      <header
+        className="reader-header"
+        onClick={() => applyGesture({ type: 'tap', target: 'chrome' })}
+      >
+        <button
+          type="button"
+          className="reader-button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onExit();
+          }}
+        >
           书架
         </button>
         <div className="reader-heading">
           <strong>{book.title}</strong>
           <span>{chapter.title}</span>
         </div>
-        <div className="font-controls">
-          <button
-            type="button"
-            className="reader-button"
-            aria-label="减小字号"
-            onClick={() => adjustFont(-10)}
-          >
-            A−
-          </button>
-          <button
-            type="button"
-            className="reader-button"
-            aria-label="增大字号"
-            onClick={() => adjustFont(10)}
-          >
-            A+
-          </button>
-        </div>
-        <select
-          className="theme-select"
-          value={theme}
-          aria-label="主题"
-          onChange={(event) => onThemeChange(event.target.value as Theme)}
-        >
-          {THEMES.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        <select
-          className="chapter-select"
-          value={chapter.index}
-          aria-label="选择章节"
-          onChange={(event) => onChapterChange(Number(event.target.value))}
-        >
-          {chapters.map((item) => (
-            <option key={item.id} value={item.index}>
-              {item.title}
-            </option>
-          ))}
-        </select>
       </header>
+
+      {gesture.menuOpen ? (
+        <div className="reader-menu reader-menu-top" data-menu="top">
+          <select
+            className="theme-select"
+            value={theme}
+            aria-label="主题"
+            onChange={(event) => onThemeChange(event.target.value as Theme)}
+          >
+            {THEMES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="chapter-select"
+            value={chapter.index}
+            aria-label="选择章节"
+            onChange={(event) => onChapterChange(Number(event.target.value))}
+          >
+            {chapters.map((item) => (
+              <option key={item.id} value={item.index}>
+                {item.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       <div
         ref={viewportRef}
@@ -351,15 +364,18 @@ export function ReaderView({
           const deltaX = event.clientX - start.x;
           const deltaY = event.clientY - start.y;
           if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
-            if (deltaX < 0) {
-              nextPage();
-            } else {
-              previousPage();
-            }
+            applyGesture({
+              type: 'swipe',
+              direction: deltaX < 0 ? 'left' : 'right',
+            });
             return;
           }
           if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
-            setHit(hitTestPoint(event.clientX, event.clientY, chapter) ?? null);
+            const result = hitTestPoint(event.clientX, event.clientY, chapter) ?? null;
+            setHit(result);
+            if (!result) {
+              applyGesture({ type: 'tap', target: 'blank' });
+            }
           }
         }}
         onPointerCancel={() => {
@@ -382,11 +398,17 @@ export function ReaderView({
         </div>
       </div>
 
-      <footer className="reader-footer">
+      <footer
+        className="reader-footer"
+        onClick={() => applyGesture({ type: 'tap', target: 'chrome' })}
+      >
         <button
           type="button"
           className="reader-button"
-          onClick={previousPage}
+          onClick={(event) => {
+            event.stopPropagation();
+            previousPage();
+          }}
           disabled={page === 0 && !previousChapter}
         >
           上一页
@@ -402,12 +424,39 @@ export function ReaderView({
         <button
           type="button"
           className="reader-button"
-          onClick={nextPage}
+          onClick={(event) => {
+            event.stopPropagation();
+            nextPage();
+          }}
           disabled={page >= pageCount - 1 && !nextChapter}
         >
           下一页
         </button>
       </footer>
+
+      {gesture.menuOpen ? (
+        <div className="reader-menu reader-menu-bottom" data-menu="bottom">
+          <div className="font-controls">
+            <button
+              type="button"
+              className="reader-button"
+              aria-label="减小字号"
+              onClick={() => adjustFont(-10)}
+            >
+              A−
+            </button>
+            <button
+              type="button"
+              className="reader-button"
+              aria-label="增大字号"
+              onClick={() => adjustFont(10)}
+            >
+              A+
+            </button>
+          </div>
+          <span className="menu-note">字号 {fontScale}%</span>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -67,6 +67,12 @@ body {
   margin: 0;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 button,
 input,
 select {
@@ -416,4 +422,39 @@ select {
   background: transparent;
   color: var(--text);
   border: 2px solid var(--text);
+}
+
+.reader {
+  position: relative;
+}
+
+.reader-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.9rem;
+  background: var(--surface);
+  border-color: var(--border);
+  border-style: solid;
+  border-width: 0;
+}
+
+.reader-menu-top {
+  top: 3.25rem;
+  border-bottom-width: 1px;
+}
+
+.reader-menu-bottom {
+  bottom: 3.25rem;
+  border-top-width: 1px;
+}
+
+.menu-note {
+  font-size: 0.8rem;
+  color: var(--muted);
 }

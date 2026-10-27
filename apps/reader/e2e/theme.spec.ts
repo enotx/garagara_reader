@@ -5,6 +5,8 @@ test('applies themes and removes transitions in e-ink mode', async ({ page }) =>
   await page.locator('input[type="file"]').setInputFiles('../../fixtures/txt/alice.txt');
   await expect(page.getByText(/已导入《alice》/)).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: /alice/ }).click();
+  await page.locator('.reader-header').click();
+  await expect(page.locator('[data-menu="top"]')).toBeVisible();
 
   await page.getByLabel('主题').selectOption('eink');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'eink');
