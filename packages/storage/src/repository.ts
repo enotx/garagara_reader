@@ -65,6 +65,25 @@ export async function listChapters(
   );
 }
 
+/** Character counts per chapter, used for Spec §5 percentage progress. */
+export async function listChapterCharCounts(
+  adapter: SqliteAdapter,
+  bookId: string,
+): Promise<number[]> {
+  const rows = await adapter.all<{ chapterIndex: number; characters: number | null }>(
+    'SELECT chapterIndex, SUM(LENGTH(text)) AS characters FROM blocks WHERE bookId = ? GROUP BY chapterIndex ORDER BY chapterIndex',
+    [bookId],
+  );
+  if (rows.length === 0) {
+    return [];
+  }
+  const counts: number[] = [];
+  for (const row of rows) {
+    counts[row.chapterIndex] = row.characters ?? 0;
+  }
+  return counts.map((value) => value ?? 0);
+}
+
 interface BlockRow {
   id: string;
   chapterIndex: number;

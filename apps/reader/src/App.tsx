@@ -4,13 +4,14 @@ import {
   getChapter,
   importBookToStorage,
   listBooks,
+  listChapterCharCounts,
   listChapters,
   migrate,
 } from '@garagara/storage';
 import { BrowserSqliteAdapter } from '@garagara/storage/browser';
 import { useEffect, useState } from 'react';
 
-import { ChapterView } from './ChapterView';
+import { ReaderView } from './ReaderView';
 
 let databasePromise: Promise<SqliteAdapter> | undefined;
 
@@ -31,6 +32,7 @@ export function App() {
   const [selected, setSelected] = useState<BookSummary | undefined>();
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
   const [chapter, setChapter] = useState<StoredChapter | undefined>();
+  const [chapterSizes, setChapterSizes] = useState<number[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -70,11 +72,7 @@ export function App() {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const book = await importBook(bytes, file.name);
       const stats = await importBookToStorage(adapter, book);
-      const rows = await refreshBooks(adapter);
-      const imported = rows.find((row) => row.id === book.bookId);
-      if (imported) {
-        await openBook(imported);
-      }
+      await refreshBooks(adapter);
       setStatus(
         `已导入《${book.metadata.title}》：${stats.chapters} 章、${stats.sentences} 句、${stats.chunks} 个意群。`,
       );
@@ -90,8 +88,10 @@ export function App() {
     try {
       const adapter = await openDatabase();
       const rows = await listChapters(adapter, book.id);
+      const sizes = await listChapterCharCounts(adapter, book.id);
       setSelected(book);
       setChapters(rows);
+      setChapterSizes(sizes);
       const first = rows[0];
       setChapter(first ? await getChapter(adapter, book.id, first.index) : undefined);
       setStatus('');
@@ -108,6 +108,23 @@ export function App() {
     }
     const adapter = await openDatabase();
     setChapter(await getChapter(adapter, selected.id, chapterIndex));
+  }
+
+  if (selected && chapter) {
+    return (
+      <ReaderView
+        key={chapter.id}
+        book={selected}
+        chapters={chapters}
+        chapter={chapter}
+        chapterSizes={chapterSizes}
+        onChapterChange={(chapterIndex) => void openChapter(chapterIndex)}
+        onExit={() => {
+          setSelected(undefined);
+          setChapter(undefined);
+        }}
+      />
+    );
   }
 
   return (
@@ -157,34 +174,6 @@ export function App() {
           </ul>
         )}
       </section>
-
-      {selected ? (
-        <section className="panel">
-          <h2>{selected.title}</h2>
-          {chapters.length > 1 ? (
-            <nav className="chapter-list">
-              {chapters.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={item.index === chapter?.index ? 'chapter active' : 'chapter'}
-                  onClick={() => void openChapter(item.index)}
-                >
-                  {item.title}
-                </button>
-              ))}
-            </nav>
-          ) : null}
-          {chapter ? (
-            <div className="preview">
-              <h3>{chapter.title}</h3>
-              <ChapterView chapter={chapter} />
-            </div>
-          ) : (
-            <p className="muted">这本书还没有内容。</p>
-          )}
-        </section>
-      ) : null}
     </main>
   );
 }
