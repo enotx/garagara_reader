@@ -173,8 +173,9 @@ export class OpenAiCompatibleProvider {
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(config: LlmProviderConfig, options: LlmProviderOptions = {}) {
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch;
     this.config = config;
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = (input, init) => fetchImpl(input, init);
     this.retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     this.sleep = options.sleep ?? defaultSleep;
   }
