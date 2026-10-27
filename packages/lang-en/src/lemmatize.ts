@@ -2,7 +2,7 @@ import type { Token } from './tokenize.js';
 
 export interface LemmaFormSource {
   /** Returns ECDICT-derived base forms for an inflected surface form. */
-  formsFor(form: string): readonly string[];
+  formsFor?(form: string): readonly string[];
 }
 
 const CONSONANT_DOUBLING = /([bcdfghjklmnpqrstvwxyz])\1$/;
@@ -113,7 +113,7 @@ export function lemmatize(
   }
   const surface = token.surface.toLowerCase();
   const candidates: string[] = [];
-  if (forms) {
+  if (forms?.formsFor) {
     for (const form of forms.formsFor(surface)) {
       addCandidate(candidates, form);
     }
