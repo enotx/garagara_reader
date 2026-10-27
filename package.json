@@ -16,7 +16,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e:headed": "pnpm --filter @garagara/reader test:e2e -- --headed",
+    "test:e2e:debug": "pnpm --filter @garagara/reader test:e2e -- --debug"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
