@@ -1,3 +1,4 @@
+import type { Note } from '@garagara/core';
 import type { BookSummary, ChapterSummary, StoredChapter } from '@garagara/storage';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
@@ -40,6 +41,7 @@ export function ReaderView({
   chapters,
   chapter,
   chapterSizes,
+  notes,
   theme,
   onThemeChange,
   onChapterChange,
@@ -49,6 +51,7 @@ export function ReaderView({
   chapters: ChapterSummary[];
   chapter: StoredChapter;
   chapterSizes: number[];
+  notes: Note[];
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
   onChapterChange: (chapterIndex: number) => void;
@@ -69,6 +72,7 @@ export function ReaderView({
   const [card, setCard] = useState<{ hit: HitTestResult; placement: 'top' | 'bottom' } | null>(
     null,
   );
+  const [note, setNote] = useState<Note | null>(null);
 
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -300,7 +304,10 @@ export function ReaderView({
     <div className="reader">
       <header
         className="reader-header"
-        onClick={() => applyGesture({ type: 'tap', target: 'chrome' })}
+        onClick={() => {
+          setNote(null);
+          applyGesture({ type: 'tap', target: 'chrome' });
+        }}
       >
         <button
           type="button"
@@ -377,9 +384,23 @@ export function ReaderView({
             return;
           }
           if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+            const noteElement = (
+              document.elementFromPoint(event.clientX, event.clientY) as Element | null
+            )?.closest<HTMLElement>('[data-note-id]');
+            const noteId = noteElement?.dataset.noteId;
+            if (noteId) {
+              const found = notes.find((item) => item.id === noteId);
+              if (found) {
+                setNote(found);
+                setCard(null);
+                setGesture(createGestureState());
+                return;
+              }
+            }
             const result = hitTestPoint(event.clientX, event.clientY, chapter) ?? null;
             setHit(result);
             if (result) {
+              setNote(null);
               const viewport = viewportRef.current;
               const bounds = viewport?.getBoundingClientRect();
               const placement =
@@ -393,6 +414,10 @@ export function ReaderView({
                 sameSentence: true,
               });
             } else {
+              if (note) {
+                setNote(null);
+                return;
+              }
               setCard(null);
               applyGesture({ type: 'tap', target: 'blank' });
             }
@@ -434,9 +459,29 @@ export function ReaderView({
         />
       ) : null}
 
+      {note ? (
+        <aside className="note-popup" data-note-popup>
+          <header className="note-header">
+            <h3>脚注</h3>
+            <button
+              type="button"
+              className="reader-button"
+              aria-label="关闭脚注"
+              onClick={() => setNote(null)}
+            >
+              ×
+            </button>
+          </header>
+          <p>{note.text}</p>
+        </aside>
+      ) : null}
+
       <footer
         className="reader-footer"
-        onClick={() => applyGesture({ type: 'tap', target: 'chrome' })}
+        onClick={() => {
+          setNote(null);
+          applyGesture({ type: 'tap', target: 'chrome' });
+        }}
       >
         <button
           type="button"

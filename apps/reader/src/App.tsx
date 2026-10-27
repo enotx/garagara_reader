@@ -1,4 +1,4 @@
-import { importBook } from '@garagara/core';
+import { importBook, type Note } from '@garagara/core';
 import type { BookSummary, ChapterSummary, SqliteAdapter, StoredChapter } from '@garagara/storage';
 import {
   getChapter,
@@ -6,6 +6,7 @@ import {
   listBooks,
   listChapterCharCounts,
   listChapters,
+  listNotes,
   migrate,
 } from '@garagara/storage';
 import { BrowserSqliteAdapter } from '@garagara/storage/browser';
@@ -35,6 +36,7 @@ export function App() {
   const [chapter, setChapter] = useState<StoredChapter | undefined>();
   const [chapterSizes, setChapterSizes] = useState<number[]>([]);
   const [theme, setTheme] = useState(readTheme);
+  const [notes, setNotes] = useState<Note[]>([]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -95,9 +97,11 @@ export function App() {
       const adapter = await openDatabase();
       const rows = await listChapters(adapter, book.id);
       const sizes = await listChapterCharCounts(adapter, book.id);
+      const noteRows = await listNotes(adapter, book.id);
       setSelected(book);
       setChapters(rows);
       setChapterSizes(sizes);
+      setNotes(noteRows);
       const first = rows[0];
       setChapter(first ? await getChapter(adapter, book.id, first.index) : undefined);
       setStatus('');
@@ -124,12 +128,14 @@ export function App() {
         chapters={chapters}
         chapter={chapter}
         chapterSizes={chapterSizes}
+        notes={notes}
         theme={theme}
         onThemeChange={setTheme}
         onChapterChange={(chapterIndex) => void openChapter(chapterIndex)}
         onExit={() => {
           setSelected(undefined);
           setChapter(undefined);
+          setNotes([]);
         }}
       />
     );

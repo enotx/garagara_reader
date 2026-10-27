@@ -566,3 +566,41 @@ select {
 :root[data-theme='eink'] .word-card-handle {
   border-radius: 0;
 }
+
+.note-popup {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(3.25rem + 0.5rem);
+  z-index: 25;
+  max-height: 50%;
+  overflow: auto;
+  padding: 0.7rem 0.9rem 0.9rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 18%);
+}
+
+.note-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.note-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.note-popup p {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+}
+
+:root[data-theme='eink'] .note-popup {
+  box-shadow: none;
+  border-radius: 0;
+}
