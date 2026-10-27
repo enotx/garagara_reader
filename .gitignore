@@ -9,3 +9,6 @@ test-results/
 
 # Generated wa-sqlite assets
 apps/reader/public/wa-sqlite/
+
+# Generated full ECDICT dictionary (build with tools/dict-build)
+apps/reader/public/dictionary.sqlite
