@@ -145,7 +145,7 @@ input {
 
 .chapter-view {
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: 1.05rem;
+  font-size: inherit;
   line-height: 1.7;
 }
 
@@ -363,4 +363,9 @@ input {
   .chapter-select {
     border-color: #40382e;
   }
+}
+
+.font-controls {
+  display: flex;
+  gap: 0.25rem;
 }
