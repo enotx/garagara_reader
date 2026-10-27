@@ -8,6 +8,4 @@ if (!rootElement) {
   throw new Error('Missing #root element');
 }
 
-createRoot(rootElement).render(
-  <App />,
-);
+createRoot(rootElement).render(<App />);

@@ -143,34 +143,82 @@ input {
   margin: 0 0 1rem;
 }
 
-.preview p {
+.chapter-view {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.chapter-view .block {
   margin: 0 0 0.9rem;
   white-space: pre-wrap;
 }
 
-.preview .heading {
+.chapter-view .heading {
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 1.2rem;
+  margin-top: 1.2rem;
 }
 
-.preview .quote {
+.chapter-view .quote {
   border-left: 3px solid #d8c9b0;
   padding-left: 0.8rem;
   font-style: italic;
 }
 
-.preview .listItem {
+.chapter-view .listItem {
   padding-left: 1rem;
 }
 
-.preview .separator {
+.chapter-view .listItem::before {
+  content: '• ';
+}
+
+.chapter-view .separator {
+  border: 0;
   border-top: 1px solid #ddd5c7;
   height: 0;
 }
 
-.preview .table {
+.chapter-view .table {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9rem;
   white-space: pre-wrap;
+}
+
+.chapter-view .image-placeholder {
+  display: grid;
+  place-items: center;
+  max-height: 18rem;
+  border: 1px dashed #d8c9b0;
+  border-radius: 8px;
+  color: #8a7d68;
+  font-style: italic;
+}
+
+.mark-italic {
+  font-style: italic;
+}
+
+.mark-bold {
+  font-weight: 700;
+}
+
+.mark-sup {
+  font-size: 0.75em;
+  vertical-align: super;
+}
+
+.mark-sub {
+  font-size: 0.75em;
+  vertical-align: sub;
+}
+
+.mark-noteRef {
+  color: #7a4b12;
+  cursor: pointer;
+  vertical-align: super;
+  font-size: 0.75em;
 }
 
 @media (prefers-color-scheme: dark) {

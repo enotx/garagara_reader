@@ -10,6 +10,8 @@ import {
 import { BrowserSqliteAdapter } from '@garagara/storage/browser';
 import { useEffect, useState } from 'react';
 
+import { ChapterView } from './ChapterView';
+
 let databasePromise: Promise<SqliteAdapter> | undefined;
 
 function openDatabase(): Promise<SqliteAdapter> {
@@ -174,20 +176,10 @@ export function App() {
             </nav>
           ) : null}
           {chapter ? (
-            <article className="preview">
+            <div className="preview">
               <h3>{chapter.title}</h3>
-              {chapter.blocks.map((block) =>
-                block.type === 'image' ? (
-                  <p key={block.id} className="muted">
-                    [图片{block.image?.alt ? `：${block.image.alt}` : ''}]
-                  </p>
-                ) : (
-                  <p key={block.id} className={block.type}>
-                    {block.text || '\u00a0'}
-                  </p>
-                ),
-              )}
-            </article>
+              <ChapterView chapter={chapter} />
+            </div>
           ) : (
             <p className="muted">这本书还没有内容。</p>
           )}
