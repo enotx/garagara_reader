@@ -192,6 +192,40 @@ export async function getNote(adapter: SqliteAdapter, noteId: string): Promise<N
   return { id: row.id, text: row.text, marks: parseJson<Mark[]>(row.marksJson, []) };
 }
 
+/** Reads a JSON setting by key, treating missing or corrupt rows as unset. */
+export async function getSetting<T>(adapter: SqliteAdapter, key: string): Promise<T | undefined> {
+  const row = await adapter.get<{ valueJson: string }>(
+    'SELECT valueJson FROM settings WHERE key = ?',
+    [key],
+  );
+  if (!row) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(row.valueJson) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Writes a JSON setting, replacing the previous value atomically. */
+export async function setSetting<T>(
+  adapter: SqliteAdapter,
+  key: string,
+  value: T,
+  now: number = Date.now(),
+): Promise<void> {
+  const valueJson = JSON.stringify(value);
+  if (valueJson === undefined) {
+    throw new TypeError('Setting value must be JSON-serializable');
+  }
+  await adapter.run(
+    `INSERT INTO settings (key, valueJson, updatedAt) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET valueJson = excluded.valueJson, updatedAt = excluded.updatedAt`,
+    [key, valueJson, now],
+  );
+}
+
 export async function getProgress(
   adapter: SqliteAdapter,
   bookId: string,
