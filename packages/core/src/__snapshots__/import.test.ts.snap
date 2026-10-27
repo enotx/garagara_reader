@@ -1,0 +1,386 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`epub import > imports epub/alice.epub 1`] = `
+{
+  "assets": [
+    {
+      "height": 1104,
+      "mime": "image/jpeg",
+      "width": 800,
+    },
+  ],
+  "author": "Lewis Carroll",
+  "blocks": 48,
+  "bookId": "08a2de3a58226311915bd87056e59ed4",
+  "chapters": 14,
+  "characters": 161642,
+  "format": "epub",
+  "lang": "en",
+  "notes": 0,
+  "pipelineVersion": 1,
+  "title": "Alice's Adventures in Wonderland",
+  "toc": [
+    {
+      "chapterIndex": 1,
+      "level": 1,
+      "title": "Alice’s Adventures in Wonderland",
+    },
+    {
+      "chapterIndex": 1,
+      "level": 1,
+      "title": "THE MILLENNIUM FULCRUM EDITION 3.0",
+    },
+    {
+      "chapterIndex": 1,
+      "level": 1,
+      "title": "Contents",
+    },
+    {
+      "chapterIndex": 2,
+      "level": 1,
+      "title": "CHAPTER I. Down the Rabbit-Hole",
+    },
+    {
+      "chapterIndex": 3,
+      "level": 1,
+      "title": "CHAPTER II. The Pool of Tears",
+    },
+    {
+      "chapterIndex": 4,
+      "level": 1,
+      "title": "CHAPTER III. A Caucus-Race and a Long Tale",
+    },
+    {
+      "chapterIndex": 5,
+      "level": 1,
+      "title": "CHAPTER IV. The Rabbit Sends in a Little Bill",
+    },
+    {
+      "chapterIndex": 6,
+      "level": 1,
+      "title": "CHAPTER V. Advice from a Caterpillar",
+    },
+    {
+      "chapterIndex": 7,
+      "level": 1,
+      "title": "CHAPTER VI. Pig and Pepper",
+    },
+    {
+      "chapterIndex": 8,
+      "level": 1,
+      "title": "CHAPTER VII. A Mad Tea-Party",
+    },
+    {
+      "chapterIndex": 9,
+      "level": 1,
+      "title": "CHAPTER VIII. The Queen’s Croquet-Ground",
+    },
+    {
+      "chapterIndex": 10,
+      "level": 1,
+      "title": "CHAPTER IX. The Mock Turtle’s Story",
+    },
+  ],
+}
+`;
+
+exports[`epub import > imports epub/frankenstein.epub 1`] = `
+{
+  "assets": [
+    {
+      "height": 340,
+      "mime": "image/png",
+      "width": 1400,
+    },
+    {
+      "height": 140,
+      "mime": "image/png",
+      "width": 220,
+    },
+  ],
+  "author": "Mary Shelley",
+  "blocks": 696,
+  "bookId": "0b5c070e2cde4d8bb36ef707f9d02446",
+  "chapters": 38,
+  "characters": 439396,
+  "format": "epub",
+  "lang": "en-gb",
+  "notes": 3,
+  "pipelineVersion": 1,
+  "title": "Frankenstein",
+  "toc": [
+    {
+      "chapterIndex": 0,
+      "level": 1,
+      "title": "Titlepage",
+    },
+    {
+      "chapterIndex": 1,
+      "level": 1,
+      "title": "Imprint",
+    },
+    {
+      "chapterIndex": 2,
+      "level": 1,
+      "title": "Introduction",
+    },
+    {
+      "chapterIndex": 3,
+      "level": 1,
+      "title": "Preface",
+    },
+    {
+      "chapterIndex": 4,
+      "level": 1,
+      "title": "Dedication",
+    },
+    {
+      "chapterIndex": 5,
+      "level": 1,
+      "title": "Epigraph",
+    },
+    {
+      "chapterIndex": 6,
+      "level": 1,
+      "title": "Frankenstein",
+    },
+    {
+      "chapterIndex": 7,
+      "level": 2,
+      "title": "Letter I",
+    },
+    {
+      "chapterIndex": 8,
+      "level": 2,
+      "title": "Letter II",
+    },
+    {
+      "chapterIndex": 9,
+      "level": 2,
+      "title": "Letter III",
+    },
+    {
+      "chapterIndex": 10,
+      "level": 2,
+      "title": "Letter IV",
+    },
+    {
+      "chapterIndex": 11,
+      "level": 2,
+      "title": "Chapter I",
+    },
+  ],
+}
+`;
+
+exports[`epub import > imports epub/pride-and-prejudice.epub 1`] = `
+{
+  "assets": [
+    {
+      "height": 440,
+      "mime": "image/png",
+      "width": 1400,
+    },
+    {
+      "height": 140,
+      "mime": "image/png",
+      "width": 220,
+    },
+  ],
+  "author": "Jane Austen",
+  "blocks": 2103,
+  "bookId": "85814417c1a74d2ca7f3b077b47454d0",
+  "chapters": 65,
+  "characters": 684306,
+  "format": "epub",
+  "lang": "en-gb",
+  "notes": 0,
+  "pipelineVersion": 1,
+  "title": "Pride and Prejudice",
+  "toc": [
+    {
+      "chapterIndex": 0,
+      "level": 1,
+      "title": "Titlepage",
+    },
+    {
+      "chapterIndex": 1,
+      "level": 1,
+      "title": "Imprint",
+    },
+    {
+      "chapterIndex": 2,
+      "level": 1,
+      "title": "I",
+    },
+    {
+      "chapterIndex": 3,
+      "level": 1,
+      "title": "II",
+    },
+    {
+      "chapterIndex": 4,
+      "level": 1,
+      "title": "III",
+    },
+    {
+      "chapterIndex": 5,
+      "level": 1,
+      "title": "IV",
+    },
+    {
+      "chapterIndex": 6,
+      "level": 1,
+      "title": "V",
+    },
+    {
+      "chapterIndex": 7,
+      "level": 1,
+      "title": "VI",
+    },
+    {
+      "chapterIndex": 8,
+      "level": 1,
+      "title": "VII",
+    },
+    {
+      "chapterIndex": 9,
+      "level": 1,
+      "title": "VIII",
+    },
+    {
+      "chapterIndex": 10,
+      "level": 1,
+      "title": "IX",
+    },
+    {
+      "chapterIndex": 11,
+      "level": 1,
+      "title": "X",
+    },
+  ],
+}
+`;
+
+exports[`epub import > imports epub/the-time-machine.epub 1`] = `
+{
+  "assets": [
+    {
+      "height": 340,
+      "mime": "image/png",
+      "width": 1400,
+    },
+    {
+      "height": 140,
+      "mime": "image/png",
+      "width": 220,
+    },
+  ],
+  "author": "H. G. Wells",
+  "blocks": 343,
+  "bookId": "3931b56fecfb0b0d00737f5fabcd00a4",
+  "chapters": 18,
+  "characters": 182277,
+  "format": "epub",
+  "lang": "en-gb",
+  "notes": 1,
+  "pipelineVersion": 1,
+  "title": "The Time Machine",
+  "toc": [
+    {
+      "chapterIndex": 0,
+      "level": 1,
+      "title": "Titlepage",
+    },
+    {
+      "chapterIndex": 1,
+      "level": 1,
+      "title": "Imprint",
+    },
+    {
+      "chapterIndex": 2,
+      "level": 1,
+      "title": "I",
+    },
+    {
+      "chapterIndex": 3,
+      "level": 1,
+      "title": "II",
+    },
+    {
+      "chapterIndex": 4,
+      "level": 1,
+      "title": "III",
+    },
+    {
+      "chapterIndex": 5,
+      "level": 1,
+      "title": "IV",
+    },
+    {
+      "chapterIndex": 6,
+      "level": 1,
+      "title": "V",
+    },
+    {
+      "chapterIndex": 7,
+      "level": 1,
+      "title": "VI",
+    },
+    {
+      "chapterIndex": 8,
+      "level": 1,
+      "title": "VII",
+    },
+    {
+      "chapterIndex": 9,
+      "level": 1,
+      "title": "VIII",
+    },
+    {
+      "chapterIndex": 10,
+      "level": 1,
+      "title": "IX",
+    },
+    {
+      "chapterIndex": 11,
+      "level": 1,
+      "title": "X",
+    },
+  ],
+}
+`;
+
+exports[`epub import > imports epub/the-yellow-wallpaper.epub 1`] = `
+{
+  "assets": [
+    {
+      "height": 1000,
+      "mime": "image/jpeg",
+      "width": 688,
+    },
+  ],
+  "author": "Charlotte Perkins Gilman",
+  "blocks": 290,
+  "bookId": "81fe9cb59df5d9616e48d9f3721404de",
+  "chapters": 3,
+  "characters": 49939,
+  "format": "epub",
+  "lang": "en",
+  "notes": 0,
+  "pipelineVersion": 1,
+  "title": "The Yellow Wallpaper",
+  "toc": [
+    {
+      "chapterIndex": 1,
+      "level": 1,
+      "title": "The Yellow Wallpaper",
+    },
+    {
+      "chapterIndex": 2,
+      "level": 1,
+      "title": "THE FULL PROJECT GUTENBERG™ LICENSE",
+    },
+  ],
+}
+`;
