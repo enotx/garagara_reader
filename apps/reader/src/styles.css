@@ -1896,6 +1896,468 @@ button:disabled {
 }
 
 /* --------------------------------------------------------------------------
+ * Settings
+ * ------------------------------------------------------------------------ */
+
+.app.settings {
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0 0 calc(4.75rem + var(--safe-bottom));
+  background:
+    radial-gradient(120rem 46rem at 50% -20rem, var(--surface-container) 0%, transparent 56%),
+    var(--bg);
+}
+
+.settings-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  padding-top: var(--safe-top);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--divider) 60%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.settings-topbar-inner {
+  width: min(100%, 46rem);
+  min-height: 4rem;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.settings-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-heading .eyebrow {
+  margin-bottom: 0.1rem;
+}
+
+.settings-heading h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.settings-mark {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.settings-shell {
+  width: min(100%, 46rem);
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-group {
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sheet);
+  background: var(--surface);
+  box-shadow: var(--shadow-sheet);
+}
+
+.settings-group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.settings-group h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.settings-group-head p {
+  margin: 0.3rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.settings-badge {
+  flex: 0 0 auto;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.settings-badge.is-ready {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.settings-fields {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1.1rem;
+}
+
+.settings-field {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.settings-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.settings-label small {
+  font-size: 0.62rem;
+  font-weight: 400;
+}
+
+.settings-field input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-low);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.86rem;
+}
+
+.settings-field input::placeholder {
+  color: var(--text-dimmed);
+}
+
+.settings-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.settings-hint {
+  margin: 0.9rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  line-height: 1.65;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.button-primary,
+.button-secondary {
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border-radius: var(--radius-control);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.button-primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.button-primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.button-secondary {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.button-secondary:hover:not(:disabled) {
+  background: var(--surface-low);
+  border-color: var(--border-strong);
+}
+
+.button-primary:disabled,
+.button-secondary:disabled {
+  opacity: 0.55;
+}
+
+.settings-feedback {
+  margin: 0.8rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.settings-feedback.is-success {
+  color: var(--accent);
+}
+
+.settings-feedback.is-error {
+  color: var(--stamp);
+}
+
+.settings-options {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.settings-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.settings-option.is-selected {
+  border-color: var(--accent);
+  background: var(--surface-low);
+}
+
+.settings-option input {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0.1rem 0 0;
+  accent-color: var(--accent);
+}
+
+.settings-option-copy {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.settings-option-copy strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.settings-option-copy span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.settings-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.settings-switch > span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.settings-switch strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.settings-switch span span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.settings-switch input {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--accent);
+}
+
+.settings-privacy p {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.65;
+}
+
+.settings-privacy .settings-version {
+  color: var(--text-dimmed);
+  font-size: 0.68rem;
+}
+
+.settings-reset {
+  margin-top: 0.8rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+ * Word card: in-context meaning
+ * ------------------------------------------------------------------------ */
+
+.word-context-ai {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-low);
+}
+
+.word-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.word-section-head h4 {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.word-source-badge {
+  padding: 0.05rem 0.38rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--surface);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.word-source-badge[data-context-source='cache'] {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.word-context-loading,
+.word-context-message {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.word-context-message.is-error {
+  color: var(--stamp);
+}
+
+.word-context-meaning {
+  margin: 0.5rem 0 0;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.word-context-pos {
+  margin: 0.2rem 0 0;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+}
+
+.word-context-phrase {
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary);
+  font-family: var(--font-serif);
+  font-size: 0.78rem;
+}
+
+.word-context-phrase span {
+  color: var(--text-dimmed);
+}
+
+.word-inline-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  margin-left: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.word-context-button {
+  min-height: 2.25rem;
+  margin-top: 0.6rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.word-context-button:hover:not(:disabled) {
+  background: var(--surface-container);
+}
+
+.word-context-button:disabled {
+  opacity: 0.55;
+}
+
+.word-dictionary {
+  margin-top: 0.9rem;
+}
+
+.word-dictionary .word-section-head {
+  margin-bottom: 0.55rem;
+}
+
+/* --------------------------------------------------------------------------
  * Tablet / desktop adaptations
  * ------------------------------------------------------------------------ */
 
@@ -1970,6 +2432,7 @@ button:disabled {
 
 :root[data-theme='eink'] .book-menu,
 :root[data-theme='eink'] .library-topbar,
+:root[data-theme='eink'] .settings-topbar,
 :root[data-theme='eink'] .tab-bar,
 :root[data-theme='eink'] .reader-menu,
 :root[data-theme='eink'] .sheet-backdrop {
@@ -1997,7 +2460,15 @@ button:disabled {
 :root[data-theme='eink'] .sheet-cover,
 :root[data-theme='eink'] .sheet-cancel,
 :root[data-theme='eink'] .sheet-action,
-:root[data-theme='eink'] .reader-menu {
+:root[data-theme='eink'] .reader-menu,
+:root[data-theme='eink'] .settings-group,
+:root[data-theme='eink'] .settings-field input,
+:root[data-theme='eink'] .settings-option,
+:root[data-theme='eink'] .settings-mark,
+:root[data-theme='eink'] .button-primary,
+:root[data-theme='eink'] .button-secondary,
+:root[data-theme='eink'] .word-context-ai,
+:root[data-theme='eink'] .word-context-button {
   border-radius: 0;
 }
 

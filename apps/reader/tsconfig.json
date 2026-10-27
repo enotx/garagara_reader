@@ -13,6 +13,7 @@
     "paths": {
       "@garagara/core": ["../../packages/core/src/index.ts"],
       "@garagara/lang-en": ["../../packages/lang-en/src/index.ts"],
+      "@garagara/llm": ["../../packages/llm/src/index.ts"],
       "@garagara/storage": ["../../packages/storage/src/index.ts"],
       "@garagara/storage/browser": ["../../packages/storage/src/browser-adapter.ts"]
     }

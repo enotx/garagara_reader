@@ -8,6 +8,7 @@ import { IconChevronLeft, IconChevronRight, IconX } from './icons';
 import { buildPageMap, type PageInfo } from './page-map.js';
 import { hitTestPoint, type HitTestResult } from './hit-test.js';
 import { collectPageFragments } from './page-map-dom.js';
+import type { LlmRuntime } from './llm.js';
 import { THEMES, type Theme } from './theme.js';
 import { WordCard } from './WordCard.js';
 
@@ -44,9 +45,11 @@ export function ReaderView({
   chapterSizes,
   notes,
   theme,
+  llm,
   onThemeChange,
   onChapterChange,
   onExit,
+  onOpenSettings,
 }: {
   book: BookSummary;
   chapters: ChapterSummary[];
@@ -54,9 +57,11 @@ export function ReaderView({
   chapterSizes: number[];
   notes: Note[];
   theme: Theme;
+  llm?: LlmRuntime;
   onThemeChange: (theme: Theme) => void;
   onChapterChange: (chapterIndex: number) => void;
   onExit: () => void;
+  onOpenSettings: () => void;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -516,6 +521,8 @@ export function ReaderView({
             return sentence ? { sentence } : {};
           })()}
           placement={card.placement}
+          {...(llm ? { llm } : {})}
+          onOpenSettings={onOpenSettings}
           onClose={() => {
             setCard(null);
             setHit(null);

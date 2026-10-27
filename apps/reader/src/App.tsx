@@ -23,6 +23,8 @@ import {
   IconX,
 } from './icons';
 import { ReaderView } from './ReaderView';
+import { SettingsView } from './SettingsView';
+import { DEFAULT_LLM_SETTINGS, readLlmSettings, type ReaderLlmSettings } from './settings.js';
 import { applyTheme, readTheme } from './theme';
 
 let databasePromise: Promise<SqliteAdapter> | undefined;
@@ -53,6 +55,51 @@ function formatImportDate(timestamp: number): string {
   }).format(timestamp);
 }
 
+function TabBar({
+  active,
+  onSelect,
+}: {
+  active: 'library' | 'settings';
+  onSelect: (tab: 'library' | 'settings') => void;
+}) {
+  return (
+    <nav className="tab-bar" aria-label="主导航">
+      <div className="tab-bar-inner">
+        <button
+          type="button"
+          className={`tab-item${active === 'library' ? ' is-active' : ''}`}
+          aria-current={active === 'library' ? 'page' : undefined}
+          onClick={() => {
+            if (active !== 'library') {
+              onSelect('library');
+            }
+          }}
+        >
+          <IconBook size={20} />
+          书架
+        </button>
+        <button type="button" className="tab-item" disabled title="即将推出">
+          <IconBookmark size={20} />
+          生词本
+        </button>
+        <button
+          type="button"
+          className={`tab-item${active === 'settings' ? ' is-active' : ''}`}
+          aria-current={active === 'settings' ? 'page' : undefined}
+          onClick={() => {
+            if (active !== 'settings') {
+              onSelect('settings');
+            }
+          }}
+        >
+          <IconSettings size={20} />
+          设置
+        </button>
+      </div>
+    </nav>
+  );
+}
+
 export function App() {
   const [status, setStatus] = useState('正在打开本地书库…');
   const [busy, setBusy] = useState(false);
@@ -64,6 +111,10 @@ export function App() {
   const [theme, setTheme] = useState(readTheme);
   const [notes, setNotes] = useState<Note[]>([]);
   const [sheetBook, setSheetBook] = useState<BookSummary | null>(null);
+  const [adapter, setAdapter] = useState<SqliteAdapter>();
+  const [llmSettings, setLlmSettings] = useState<ReaderLlmSettings>(DEFAULT_LLM_SETTINGS);
+  const [apiKey, setApiKey] = useState('');
+  const [view, setView] = useState<'library' | 'settings'>('library');
 
   useEffect(() => {
     applyTheme(theme);
@@ -72,12 +123,15 @@ export function App() {
   useEffect(() => {
     let active = true;
     openDatabase()
-      .then(async (adapter) => {
-        const rows = await listBooks(adapter);
+      .then(async (database) => {
+        const rows = await listBooks(database);
+        const settings = await readLlmSettings(database);
         if (!active) {
           return;
         }
+        setAdapter(database);
         setBooks(rows);
+        setLlmSettings(settings);
         setStatus('');
       })
       .catch((error: unknown) => {
@@ -134,6 +188,7 @@ export function App() {
   async function openBook(book: BookSummary): Promise<void> {
     setBusy(true);
     setSheetBook(null);
+    setView('library');
     try {
       const adapter = await openDatabase();
       const rows = await listChapters(adapter, book.id);
@@ -161,6 +216,33 @@ export function App() {
     setChapter(await getChapter(adapter, selected.id, chapterIndex));
   }
 
+  if (view === 'settings') {
+    return (
+      <>
+        <SettingsView
+          adapter={adapter}
+          settings={llmSettings}
+          apiKey={apiKey}
+          backLabel={selected && chapter ? '返回阅读' : '返回书架'}
+          onBack={() => setView('library')}
+          onSaved={(nextSettings, nextApiKey) => {
+            setLlmSettings(nextSettings);
+            setApiKey(nextApiKey);
+          }}
+        />
+        <TabBar
+          active="settings"
+          onSelect={() => {
+            setView('library');
+            setSelected(undefined);
+            setChapter(undefined);
+            setNotes([]);
+          }}
+        />
+      </>
+    );
+  }
+
   if (selected && chapter) {
     return (
       <ReaderView
@@ -171,6 +253,7 @@ export function App() {
         chapterSizes={chapterSizes}
         notes={notes}
         theme={theme}
+        {...(adapter ? { llm: { adapter, settings: llmSettings, apiKey } } : {})}
         onThemeChange={setTheme}
         onChapterChange={(chapterIndex) => void openChapter(chapterIndex)}
         onExit={() => {
@@ -178,6 +261,7 @@ export function App() {
           setChapter(undefined);
           setNotes([]);
         }}
+        onOpenSettings={() => setView('settings')}
       />
     );
   }
@@ -324,22 +408,7 @@ export function App() {
         )}
       </div>
 
-      <nav className="tab-bar" aria-label="主导航">
-        <div className="tab-bar-inner">
-          <button type="button" className="tab-item is-active" aria-current="page">
-            <IconBook size={20} />
-            书架
-          </button>
-          <button type="button" className="tab-item" disabled title="即将推出">
-            <IconBookmark size={20} />
-            生词本
-          </button>
-          <button type="button" className="tab-item" disabled title="即将推出">
-            <IconSettings size={20} />
-            设置
-          </button>
-        </div>
-      </nav>
+      <TabBar active="library" onSelect={() => setView('settings')} />
 
       {sheetBook ? (
         <div

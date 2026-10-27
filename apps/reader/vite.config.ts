@@ -30,6 +30,7 @@ export default defineConfig({
       },
       { find: '@garagara/storage', replacement: `${packageRoot}/storage/src/index.ts` },
       { find: '@garagara/lang-en', replacement: `${packageRoot}/lang-en/src/index.ts` },
+      { find: '@garagara/llm', replacement: `${packageRoot}/llm/src/index.ts` },
       { find: '@garagara/core', replacement: `${packageRoot}/core/src/index.ts` },
     ],
   },
