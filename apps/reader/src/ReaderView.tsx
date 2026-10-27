@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ChapterView } from './ChapterView.js';
 import { buildPageMap, type PageInfo } from './page-map.js';
+import { hitTestPoint, type HitTestResult } from './hit-test.js';
 import { collectPageFragments } from './page-map-dom.js';
 import { THEMES, type Theme } from './theme.js';
 
@@ -53,7 +54,8 @@ export function ReaderView({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const pointerStart = useRef<number | null>(null);
+  const pointerStart = useRef<{ x: number; y: number } | null>(null);
+  const [hit, setHit] = useState<HitTestResult | null>(null);
   const pendingAnchor = useRef<Anchor | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [page, setPage] = useState(0);
@@ -332,8 +334,13 @@ export function ReaderView({
         data-page-start={JSON.stringify(pageMap[page]?.startLocator)}
         data-page-end={JSON.stringify(pageMap[page]?.endLocator)}
         data-split-sentences={splitSentenceIds.join(',')}
+        data-hit-token={hit?.token.surface}
+        data-hit-block={hit?.block.id}
+        data-hit-offset={hit?.blockOffset}
+        data-hit-start={hit?.token.start}
+        data-hit-end={hit?.token.end}
         onPointerDown={(event) => {
-          pointerStart.current = event.clientX;
+          pointerStart.current = { x: event.clientX, y: event.clientY };
         }}
         onPointerUp={(event) => {
           const start = pointerStart.current;
@@ -341,11 +348,18 @@ export function ReaderView({
           if (start === null) {
             return;
           }
-          const delta = event.clientX - start;
-          if (delta < -50) {
-            nextPage();
-          } else if (delta > 50) {
-            previousPage();
+          const deltaX = event.clientX - start.x;
+          const deltaY = event.clientY - start.y;
+          if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
+            if (deltaX < 0) {
+              nextPage();
+            } else {
+              previousPage();
+            }
+            return;
+          }
+          if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+            setHit(hitTestPoint(event.clientX, event.clientY, chapter) ?? null);
           }
         }}
         onPointerCancel={() => {
