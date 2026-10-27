@@ -13,3 +13,11 @@ export {
 export { LlmCache, type LlmCacheOptions } from './cache.js';
 export { buildLlmCacheKey, type LlmCacheKeyInput } from './cache-key.js';
 export { LLM_PROMPT_VERSIONS, promptVersionFor, type LlmTask } from './prompts.js';
+export {
+  buildWordInContextMessages,
+  markedSentence,
+  parseWordInContextResult,
+  type WordInContextInput,
+  type WordInContextPhrase,
+  type WordInContextResult,
+} from './word-in-context.js';
