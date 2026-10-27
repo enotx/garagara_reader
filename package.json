@@ -8,9 +8,11 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "dev": "pnpm --filter @garagara/reader dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
+    "test:e2e": "pnpm --filter @garagara/reader test:e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
