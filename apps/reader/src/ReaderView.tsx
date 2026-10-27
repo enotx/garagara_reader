@@ -7,6 +7,7 @@ import { buildPageMap, type PageInfo } from './page-map.js';
 import { hitTestPoint, type HitTestResult } from './hit-test.js';
 import { collectPageFragments } from './page-map-dom.js';
 import { THEMES, type Theme } from './theme.js';
+import { WordCard } from './WordCard.js';
 
 const COLUMN_GAP = 40;
 const FONT_SCALE_KEY = 'garagara.reader.fontScale';
@@ -65,6 +66,9 @@ export function ReaderView({
   const [fontsReady, setFontsReady] = useState(false);
   const [pageMap, setPageMap] = useState<PageInfo[]>([]);
   const [gesture, setGesture] = useState(createGestureState);
+  const [card, setCard] = useState<{ hit: HitTestResult; placement: 'top' | 'bottom' } | null>(
+    null,
+  );
 
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -272,6 +276,8 @@ export function ReaderView({
         } else {
           previousPage();
         }
+      } else if (command.type === 'closeCard') {
+        setCard(null);
       }
     }
   }
@@ -373,7 +379,21 @@ export function ReaderView({
           if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
             const result = hitTestPoint(event.clientX, event.clientY, chapter) ?? null;
             setHit(result);
-            if (!result) {
+            if (result) {
+              const viewport = viewportRef.current;
+              const bounds = viewport?.getBoundingClientRect();
+              const placement =
+                bounds && event.clientY < bounds.top + bounds.height / 2 ? 'bottom' : 'top';
+              setCard({ hit: result, placement });
+              applyGesture({
+                type: 'tap',
+                target: 'word',
+                word: result.token.surface,
+                sentenceId: result.sentenceId ?? '',
+                sameSentence: true,
+              });
+            } else {
+              setCard(null);
               applyGesture({ type: 'tap', target: 'blank' });
             }
           }
@@ -397,6 +417,22 @@ export function ReaderView({
           <ChapterView chapter={chapter} />
         </div>
       </div>
+
+      {card ? (
+        <WordCard
+          key={`${card.hit.block.id}:${card.hit.token.start}`}
+          hit={card.hit}
+          {...(() => {
+            const sentence = chapter.sentences.find((item) => item.id === card.hit.sentenceId);
+            return sentence ? { sentence } : {};
+          })()}
+          placement={card.placement}
+          onClose={() => {
+            setCard(null);
+            setGesture(createGestureState());
+          }}
+        />
+      ) : null}
 
       <footer
         className="reader-footer"
