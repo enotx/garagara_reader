@@ -2,6 +2,8 @@ import type { BookSummary, ChapterSummary, StoredChapter } from '@garagara/stora
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ChapterView } from './ChapterView.js';
+import { buildPageMap, type PageInfo } from './page-map.js';
+import { collectPageFragments } from './page-map-dom.js';
 
 const COLUMN_GAP = 40;
 const FONT_SCALE_KEY = 'garagara.reader.fontScale';
@@ -53,6 +55,7 @@ export function ReaderView({
   const [pageCount, setPageCount] = useState(1);
   const [fontScale, setFontScale] = useState(initialFontScale);
   const [fontsReady, setFontsReady] = useState(false);
+  const [pageMap, setPageMap] = useState<PageInfo[]>([]);
 
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -79,6 +82,20 @@ export function ReaderView({
     totalChars > 0
       ? Math.round(((charsBefore + chapterChars * pageFraction) / totalChars) * 100)
       : 0;
+  const splitSentenceIds = useMemo(() => {
+    const pagesBySentence = new Map<string, Set<number>>();
+    for (const page of pageMap) {
+      for (const segment of page.segments) {
+        if (segment.kind !== 'sentence') {
+          continue;
+        }
+        const pages = pagesBySentence.get(segment.id) ?? new Set<number>();
+        pages.add(page.index);
+        pagesBySentence.set(segment.id, pages);
+      }
+    }
+    return [...pagesBySentence.entries()].filter(([, pages]) => pages.size > 1).map(([id]) => id);
+  }, [pageMap]);
 
   function captureVisibleAnchor(): Anchor | null {
     const viewport = viewportRef.current;
@@ -189,6 +206,14 @@ export function ReaderView({
         }
         pendingAnchor.current = null;
       }
+      setPageMap(
+        buildPageMap(
+          book.id,
+          chapter,
+          collectPageFragments(content, size.width + COLUMN_GAP),
+          pages,
+        ),
+      );
       setPageCount(pages);
       setPage(target);
     });
@@ -287,6 +312,9 @@ export function ReaderView({
       <div
         ref={viewportRef}
         className="reader-viewport"
+        data-page-start={JSON.stringify(pageMap[page]?.startLocator)}
+        data-page-end={JSON.stringify(pageMap[page]?.endLocator)}
+        data-split-sentences={splitSentenceIds.join(',')}
         onPointerDown={(event) => {
           pointerStart.current = event.clientX;
         }}

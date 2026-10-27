@@ -1,4 +1,4 @@
-import type { Block, ImageInfo, Locator, Mark, Note, Sentence } from '@garagara/core';
+import type { Block, Chunk, ImageInfo, Locator, Mark, Note, Sentence } from '@garagara/core';
 import { uuidv7 } from '@garagara/core';
 
 import type { SqliteAdapter } from './adapter.js';
@@ -24,6 +24,7 @@ export interface ChapterSummary {
 export interface StoredChapter extends ChapterSummary {
   blocks: Block[];
   sentences: Sentence[];
+  chunks: Chunk[];
 }
 
 function parseJson<T>(value: string | null, fallback: T): T {
@@ -151,10 +152,20 @@ export async function getChapter(
     end: row.end,
   }));
 
+  const chunkRows = await adapter.all<Chunk>(
+    `SELECT c.sentenceId, c."index", c.start, c.end
+     FROM chunks c
+     JOIN sentences s ON s.id = c.sentenceId
+     WHERE s.bookId = ? AND s.chapterIndex = ?
+     ORDER BY s.blockId, s."index", c."index"`,
+    [bookId, chapterIndex],
+  );
+
   return {
     ...chapter,
     blocks,
     sentences,
+    chunks: chunkRows,
   };
 }
 
