@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChapterView } from './ChapterView.js';
 import { buildPageMap, type PageInfo } from './page-map.js';
 import { collectPageFragments } from './page-map-dom.js';
+import { THEMES, type Theme } from './theme.js';
 
 const COLUMN_GAP = 40;
 const FONT_SCALE_KEY = 'garagara.reader.fontScale';
@@ -36,6 +37,8 @@ export function ReaderView({
   chapters,
   chapter,
   chapterSizes,
+  theme,
+  onThemeChange,
   onChapterChange,
   onExit,
 }: {
@@ -43,6 +46,8 @@ export function ReaderView({
   chapters: ChapterSummary[];
   chapter: StoredChapter;
   chapterSizes: number[];
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
   onChapterChange: (chapterIndex: number) => void;
   onExit: () => void;
 }) {
@@ -295,6 +300,18 @@ export function ReaderView({
             A+
           </button>
         </div>
+        <select
+          className="theme-select"
+          value={theme}
+          aria-label="主题"
+          onChange={(event) => onThemeChange(event.target.value as Theme)}
+        >
+          {THEMES.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
         <select
           className="chapter-select"
           value={chapter.index}

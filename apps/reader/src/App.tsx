@@ -12,6 +12,7 @@ import { BrowserSqliteAdapter } from '@garagara/storage/browser';
 import { useEffect, useState } from 'react';
 
 import { ReaderView } from './ReaderView';
+import { applyTheme, readTheme } from './theme';
 
 let databasePromise: Promise<SqliteAdapter> | undefined;
 
@@ -33,6 +34,11 @@ export function App() {
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
   const [chapter, setChapter] = useState<StoredChapter | undefined>();
   const [chapterSizes, setChapterSizes] = useState<number[]>([]);
+  const [theme, setTheme] = useState(readTheme);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     let active = true;
@@ -118,6 +124,8 @@ export function App() {
         chapters={chapters}
         chapter={chapter}
         chapterSizes={chapterSizes}
+        theme={theme}
+        onThemeChange={setTheme}
         onChapterChange={(chapterIndex) => void openChapter(chapterIndex)}
         onExit={() => {
           setSelected(undefined);
