@@ -8,8 +8,8 @@
 :root {
   --font-serif: 'Literata', 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
   --font-sans:
-    'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', sans-serif;
+    'Inter', 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans CJK SC', sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
   --space-1: 0.25rem;
@@ -1907,18 +1907,6 @@ button:disabled {
   min-width: 2.75rem;
   min-height: 2.75rem;
   margin: -0.55rem -0.65rem 0 0;
-}
-
-.word-context {
-  margin: 0.8rem 0 0.5rem;
-  padding: 0.55rem 0.75rem;
-  border-left: 2px solid var(--accent);
-  border-radius: 0 var(--radius-chip) var(--radius-chip) 0;
-  background: var(--surface-low);
-  color: var(--text-secondary);
-  font-family: var(--font-serif);
-  font-size: 0.84rem;
-  line-height: 1.55;
 }
 
 .word-entries {

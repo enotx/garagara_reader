@@ -51,7 +51,6 @@ export function WordCard({
   placement,
   onClose,
   onOpenSettings,
-  onTranslateSentence,
 }: {
   hit: HitTestResult;
   sentence?: Sentence;
@@ -61,7 +60,6 @@ export function WordCard({
   placement: 'top' | 'bottom';
   onClose: () => void;
   onOpenSettings?: () => void;
-  onTranslateSentence?: () => void;
 }) {
   const initialKey = cardKey(hit);
   const [data, setData] = useState<CardData>({
@@ -383,8 +381,6 @@ export function WordCard({
         </div>
       </header>
 
-      {sentence ? <blockquote className="word-context">{sentenceText}</blockquote> : null}
-
       <section className="word-context-ai" aria-label="本句含义" data-word-context>
         <div className="word-section-head">
           <h4>本句含义</h4>
@@ -451,11 +447,6 @@ export function WordCard({
       </section>
 
       <div className="word-card-actions">
-        {onTranslateSentence ? (
-          <button type="button" className="word-card-action" onClick={onTranslateSentence}>
-            整句翻译
-          </button>
-        ) : null}
         {data.phrase ? (
           <button
             type="button"

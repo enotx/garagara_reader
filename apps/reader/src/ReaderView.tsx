@@ -901,22 +901,6 @@ export function ReaderView({
           {...(llm ? { adapter: llm.adapter } : {})}
           bookId={book.id}
           onOpenSettings={onOpenSettings}
-          onTranslateSentence={() => {
-            const sentence = chapter.sentences.find((item) => item.id === card.hit.sentenceId);
-            const block = sentence
-              ? chapter.blocks.find((item) => item.id === sentence.blockId)
-              : undefined;
-            if (!sentence || !block) {
-              return;
-            }
-            setTranslation({
-              text: block.text.slice(sentence.start, sentence.end),
-              placement: card.placement,
-            });
-            setCard(null);
-            setHit(null);
-            setGesture(createGestureState());
-          }}
           onClose={() => {
             setCard(null);
             setHit(null);

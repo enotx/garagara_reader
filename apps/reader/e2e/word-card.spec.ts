@@ -56,6 +56,8 @@ test('opens a dictionary card, replaces it and expands it', async ({ page }) => 
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute('data-card-title', 'wonderland');
   await expect(card).toContainText('奇境');
+  await expect(card.locator('.word-context')).toHaveCount(0);
+  await expect(card.getByRole('button', { name: '整句翻译' })).toHaveCount(0);
 
   const next = await wordPoint(page, 'Alice');
   expect(next).not.toBeNull();

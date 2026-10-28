@@ -110,7 +110,7 @@ test('long-presses a sentence to show the translation overlay', async ({ page })
   await expect(popover).toHaveCount(0);
 });
 
-test('translates from the word card and reuses the cache', async ({ page }) => {
+test('reuses the translation cache from the long-press popover', async ({ page }) => {
   const mock = await mockLlm(page);
   await page.goto('/');
   await configureMockLlm(page);
@@ -118,14 +118,19 @@ test('translates from the word card and reuses the cache', async ({ page }) => {
 
   const point = await wordPoint(page, 'took');
   expect(point).not.toBeNull();
-  if (point) {
-    await page.mouse.click(point.x, point.y);
+
+  async function longPress(): Promise<void> {
+    if (!point) {
+      return;
+    }
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+    await page.waitForTimeout(650);
+    await page.mouse.up();
   }
-  const card = page.locator('[data-word-card]');
-  await expect(card).toBeVisible();
-  await card.getByRole('button', { name: '整句翻译' }).click();
 
   const popover = page.locator('[data-translation-popover]');
+  await longPress();
   await expect(popover).toHaveAttribute('data-translation-status', 'ready', { timeout: 10_000 });
   await expect(popover.locator('[data-translation-source]')).toHaveText('AI');
   await expect(page.locator('[data-word-card]')).toHaveCount(0);
@@ -133,11 +138,7 @@ test('translates from the word card and reuses the cache', async ({ page }) => {
   await popover.getByRole('button', { name: '关闭翻译' }).click();
   await expect(popover).toHaveCount(0);
 
-  if (point) {
-    await page.mouse.click(point.x, point.y);
-  }
-  await expect(card).toBeVisible();
-  await card.getByRole('button', { name: '整句翻译' }).click();
+  await longPress();
   await expect(popover).toHaveAttribute('data-translation-status', 'ready');
   await expect(popover.locator('[data-translation-source]')).toHaveText('缓存');
   expect(mock.translationCalls()).toBe(1);

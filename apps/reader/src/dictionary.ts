@@ -1,6 +1,8 @@
 import type { Dictionary, DictionaryEntry } from '@garagara/lang-en';
 import { openBrowserSqliteFromBytes } from '@garagara/storage/browser';
 
+import { loadDictionaryBytes } from './dictionary-bytes.js';
+
 interface EntryRow {
   word: string;
   lemma: string;
@@ -13,27 +15,20 @@ interface EntryRow {
 
 let dictionaryPromise: Promise<Dictionary | undefined> | undefined;
 
-async function loadBytes(): Promise<Uint8Array | undefined> {
-  for (const path of ['/dictionary.sqlite', '/dictionary-demo.sqlite']) {
-    const response = await fetch(path);
-    if (!response.ok) {
-      continue;
-    }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    const magic = new TextDecoder().decode(bytes.slice(0, 15));
-    if (magic === 'SQLite format 3') {
-      return bytes;
-    }
-  }
-  return undefined;
-}
-
 async function createDictionary(): Promise<Dictionary | undefined> {
-  const bytes = await loadBytes();
+  const bytes = await loadDictionaryBytes(
+    ['/dictionary.sqlite', '/dictionary-demo.sqlite'],
+    (path) => fetch(path),
+  );
   if (!bytes) {
     return undefined;
   }
-  const database = await openBrowserSqliteFromBytes(bytes, 'dictionary.sqlite');
+  let database: Awaited<ReturnType<typeof openBrowserSqliteFromBytes>>;
+  try {
+    database = await openBrowserSqliteFromBytes(bytes, 'dictionary.sqlite');
+  } catch {
+    return undefined;
+  }
   const phraseRows = await database.all<{ phrase: string }>('SELECT phrase FROM phrases');
   const formRows = await database.all<{ form: string; lemma: string }>(
     'SELECT form, lemma FROM forms',
@@ -88,7 +83,10 @@ async function createDictionary(): Promise<Dictionary | undefined> {
 /** Loads the bundled ECDICT SQLite dictionary once per browser session. */
 export function loadDictionary(): Promise<Dictionary | undefined> {
   if (!dictionaryPromise) {
-    dictionaryPromise = createDictionary();
+    dictionaryPromise = createDictionary().catch(() => {
+      dictionaryPromise = undefined;
+      return undefined;
+    });
   }
   return dictionaryPromise;
 }
