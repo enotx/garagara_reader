@@ -75,6 +75,37 @@ describe('gesture state machine', () => {
     });
   });
 
+  it('covers the Focus column', () => {
+    const focus = { focus: true } as const;
+    expect(run(word('here'), focus)).toEqual({
+      state: { mode: 'card', menuOpen: false, cardWord: 'here' },
+      commands: [{ type: 'openCard', word: 'here' }],
+    });
+
+    expect(
+      run(
+        { type: 'tap', target: 'word', word: 'next', sentenceId: 's2', sameSentence: false },
+        focus,
+      ),
+    ).toEqual({
+      state: { mode: 'reading', menuOpen: false },
+      commands: [{ type: 'advanceFocus' }],
+    });
+
+    expect(run({ type: 'tap', target: 'blank' }, focus).commands).toEqual([
+      { type: 'advanceFocus' },
+    ]);
+    expect(run({ type: 'longPress', sentenceId: 's3' }, focus).commands).toEqual([
+      { type: 'focusSentence', sentenceId: 's3' },
+    ]);
+    expect(run({ type: 'swipe', direction: 'left' }, focus).commands).toEqual([
+      { type: 'turnPage', direction: 'next' },
+    ]);
+    expect(run({ type: 'tap', target: 'chrome' }, focus).commands).toEqual([
+      { type: 'toggleMenu' },
+    ]);
+  });
+
   it('closes a menu before opening a card', () => {
     const menu = reduceGesture(createGestureState(), { type: 'tap', target: 'blank' });
     const result = reduceGesture(menu.state, word('apple'));

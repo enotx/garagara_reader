@@ -25,6 +25,8 @@ export type GestureCommand =
   | { type: 'closeCard' }
   | { type: 'toggleMenu' }
   | { type: 'translateSentence'; sentenceId: string }
+  | { type: 'advanceFocus' }
+  | { type: 'focusSentence'; sentenceId: string }
   | { type: 'turnPage'; direction: 'next' | 'prev' };
 
 export interface GestureResult {
@@ -35,6 +37,8 @@ export interface GestureResult {
 export interface GestureOptions {
   /** Spec §11.2: edge taps turn pages only when the setting is enabled. */
   edgeTurn?: boolean;
+  /** Routes the Focus column of Spec §11.2. */
+  focus?: boolean;
 }
 
 export function createGestureState(): GestureState {
@@ -54,8 +58,8 @@ function pageCommand(direction: 'next' | 'prev'): GestureCommand {
 }
 
 /**
- * Routes one gesture for the normal-reading and card-open columns of Spec
- * §11.2. Focus and playback columns are added in later milestones.
+ * Routes one gesture for the normal-reading, Focus and card-open columns of
+ * Spec §11.2. Playback is added in v0.2.
  */
 export function reduceGesture(
   state: GestureState,
@@ -63,6 +67,7 @@ export function reduceGesture(
   options: GestureOptions = {},
 ): GestureResult {
   const edgeTurn = options.edgeTurn === true;
+  const focus = options.focus === true;
 
   if (event.type === 'swipe') {
     if (state.mode === 'card') {
@@ -80,7 +85,11 @@ export function reduceGesture(
     }
     return {
       state: { ...state, menuOpen: false },
-      commands: [{ type: 'translateSentence', sentenceId: event.sentenceId }],
+      commands: [
+        focus
+          ? { type: 'focusSentence', sentenceId: event.sentenceId }
+          : { type: 'translateSentence', sentenceId: event.sentenceId },
+      ],
     };
   }
 
@@ -89,6 +98,12 @@ export function reduceGesture(
       return {
         state: card(event.word),
         commands: [{ type: 'replaceCard', word: event.word }],
+      };
+    }
+    if (focus && !event.sameSentence) {
+      return {
+        state: { ...state, menuOpen: false },
+        commands: [{ type: 'advanceFocus' }],
       };
     }
     return {
@@ -125,6 +140,12 @@ export function reduceGesture(
 
   if (state.mode === 'card') {
     return { state: reading(), commands: [{ type: 'closeCard' }] };
+  }
+  if (focus) {
+    return {
+      state: { ...state, menuOpen: false },
+      commands: [{ type: 'advanceFocus' }],
+    };
   }
   return {
     state: { ...state, menuOpen: !state.menuOpen },

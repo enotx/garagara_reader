@@ -1,4 +1,4 @@
-import { importBook, type Note } from '@garagara/core';
+import { importBook, type Locator, type Note } from '@garagara/core';
 import type { BookSummary, ChapterSummary, SqliteAdapter, StoredChapter } from '@garagara/storage';
 import {
   getChapter,
@@ -7,10 +7,9 @@ import {
   listChapterCharCounts,
   listChapters,
   listNotes,
-  migrate,
 } from '@garagara/storage';
-import { BrowserSqliteAdapter } from '@garagara/storage/browser';
-import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   IconBook,
@@ -22,22 +21,14 @@ import {
   IconSettings,
   IconX,
 } from './icons';
+import { openDatabase } from './database.js';
+import { pickBookFile, readSharedBook } from './files.js';
 import { ReaderView } from './ReaderView';
+import { readApiKey, writeApiKey } from './secrets.js';
 import { SettingsView } from './SettingsView';
+import { VocabView } from './VocabView';
 import { DEFAULT_LLM_SETTINGS, readLlmSettings, type ReaderLlmSettings } from './settings.js';
 import { applyTheme, readTheme } from './theme';
-
-let databasePromise: Promise<SqliteAdapter> | undefined;
-
-function openDatabase(): Promise<SqliteAdapter> {
-  if (!databasePromise) {
-    databasePromise = BrowserSqliteAdapter.open().then(async (adapter) => {
-      await migrate(adapter);
-      return adapter;
-    });
-  }
-  return databasePromise;
-}
 
 function coverTone(id: string): number {
   let hash = 0;
@@ -55,13 +46,9 @@ function formatImportDate(timestamp: number): string {
   }).format(timestamp);
 }
 
-function TabBar({
-  active,
-  onSelect,
-}: {
-  active: 'library' | 'settings';
-  onSelect: (tab: 'library' | 'settings') => void;
-}) {
+type AppView = 'library' | 'vocab' | 'settings';
+
+function TabBar({ active, onSelect }: { active: AppView; onSelect: (tab: AppView) => void }) {
   return (
     <nav className="tab-bar" aria-label="主导航">
       <div className="tab-bar-inner">
@@ -78,7 +65,16 @@ function TabBar({
           <IconBook size={20} />
           书架
         </button>
-        <button type="button" className="tab-item" disabled title="即将推出">
+        <button
+          type="button"
+          className={`tab-item${active === 'vocab' ? ' is-active' : ''}`}
+          aria-current={active === 'vocab' ? 'page' : undefined}
+          onClick={() => {
+            if (active !== 'vocab') {
+              onSelect('vocab');
+            }
+          }}
+        >
           <IconBookmark size={20} />
           生词本
         </button>
@@ -114,7 +110,10 @@ export function App() {
   const [adapter, setAdapter] = useState<SqliteAdapter>();
   const [llmSettings, setLlmSettings] = useState<ReaderLlmSettings>(DEFAULT_LLM_SETTINGS);
   const [apiKey, setApiKey] = useState('');
-  const [view, setView] = useState<'library' | 'settings'>('library');
+  const [view, setView] = useState<AppView>('library');
+  const [initialLocator, setInitialLocator] = useState<Locator | undefined>();
+  const [readerSession, setReaderSession] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     applyTheme(theme);
@@ -126,12 +125,14 @@ export function App() {
       .then(async (database) => {
         const rows = await listBooks(database);
         const settings = await readLlmSettings(database);
+        const storedKey = await readApiKey();
         if (!active) {
           return;
         }
         setAdapter(database);
         setBooks(rows);
         setLlmSettings(settings);
+        setApiKey(storedKey);
         setStatus('');
       })
       .catch((error: unknown) => {
@@ -163,16 +164,12 @@ export function App() {
     return rows;
   }
 
-  async function handleFile(file: File | undefined): Promise<void> {
-    if (!file) {
-      return;
-    }
+  async function handleBook(name: string, bytes: Uint8Array): Promise<void> {
     setBusy(true);
-    setStatus(`正在导入 ${file.name}…`);
+    setStatus(`正在导入 ${name}…`);
     try {
       const adapter = await openDatabase();
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const book = await importBook(bytes, file.name);
+      const book = await importBook(bytes, name);
       const stats = await importBookToStorage(adapter, book);
       await refreshBooks(adapter);
       setStatus(
@@ -185,10 +182,71 @@ export function App() {
     }
   }
 
-  async function openBook(book: BookSummary): Promise<void> {
+  const handleBookRef = useRef(handleBook);
+  handleBookRef.current = handleBook;
+
+  async function handleFile(file: File | undefined): Promise<void> {
+    if (!file) {
+      return;
+    }
+    await handleBook(file.name, new Uint8Array(await file.arrayBuffer()));
+  }
+
+  async function startImport(): Promise<void> {
+    try {
+      const picked = await pickBookFile();
+      if (picked) {
+        await handleBook(picked.name, picked.bytes);
+        return;
+      }
+      fileInputRef.current?.click();
+    } catch (error) {
+      setStatus(`导入失败：${String(error)}`);
+    }
+  }
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) {
+      return;
+    }
+    let removeListener: (() => void) | undefined;
+    let active = true;
+    void import('@capacitor/app').then(async ({ App: CapacitorApp }) => {
+      const listener = await CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+        if (!url.startsWith('file://')) {
+          return;
+        }
+        void readSharedBook(url)
+          .then((book) => {
+            if (book) {
+              return handleBookRef.current(book.name, book.bytes);
+            }
+            return undefined;
+          })
+          .catch((error: unknown) => {
+            setStatus(`打开文件失败：${String(error)}`);
+          });
+      });
+      if (active) {
+        removeListener = () => {
+          void listener.remove();
+        };
+      } else {
+        void listener.remove();
+      }
+    });
+    return () => {
+      active = false;
+      removeListener?.();
+    };
+  }, []);
+
+  async function openBook(book: BookSummary, locator?: Locator): Promise<void> {
     setBusy(true);
     setSheetBook(null);
     setView('library');
+    setInitialLocator(locator);
+    setReaderSession((value) => value + 1);
     try {
       const adapter = await openDatabase();
       const rows = await listChapters(adapter, book.id);
@@ -213,7 +271,16 @@ export function App() {
       return;
     }
     const adapter = await openDatabase();
+    setInitialLocator(undefined);
     setChapter(await getChapter(adapter, selected.id, chapterIndex));
+  }
+
+  function selectTab(tab: AppView): void {
+    setView(tab);
+    setSelected(undefined);
+    setChapter(undefined);
+    setNotes([]);
+    setInitialLocator(undefined);
   }
 
   if (view === 'settings') {
@@ -225,20 +292,26 @@ export function App() {
           apiKey={apiKey}
           backLabel={selected && chapter ? '返回阅读' : '返回书架'}
           onBack={() => setView('library')}
-          onSaved={(nextSettings, nextApiKey) => {
+          onSaved={async (nextSettings, nextApiKey) => {
             setLlmSettings(nextSettings);
             setApiKey(nextApiKey);
+            await writeApiKey(nextApiKey);
           }}
         />
-        <TabBar
-          active="settings"
-          onSelect={() => {
-            setView('library');
-            setSelected(undefined);
-            setChapter(undefined);
-            setNotes([]);
-          }}
+        <TabBar active="settings" onSelect={selectTab} />
+      </>
+    );
+  }
+
+  if (view === 'vocab') {
+    return (
+      <>
+        <VocabView
+          adapter={adapter}
+          books={books}
+          onOpenBook={(book, locator) => void openBook(book, locator)}
         />
+        <TabBar active="vocab" onSelect={selectTab} />
       </>
     );
   }
@@ -246,7 +319,7 @@ export function App() {
   if (selected && chapter) {
     return (
       <ReaderView
-        key={chapter.id}
+        key={`${chapter.id}:${readerSession}`}
         book={selected}
         chapters={chapters}
         chapter={chapter}
@@ -254,12 +327,14 @@ export function App() {
         notes={notes}
         theme={theme}
         {...(adapter ? { llm: { adapter, settings: llmSettings, apiKey } } : {})}
+        {...(initialLocator ? { initialLocator } : {})}
         onThemeChange={setTheme}
         onChapterChange={(chapterIndex) => void openChapter(chapterIndex)}
         onExit={() => {
           setSelected(undefined);
           setChapter(undefined);
           setNotes([]);
+          setInitialLocator(undefined);
         }}
         onOpenSettings={() => setView('settings')}
       />
@@ -279,19 +354,22 @@ export function App() {
               <p>本地优先的外语阅读器</p>
             </div>
           </div>
-          <label
+          <button
+            type="button"
             className={`icon-button primary${busy ? ' disabled' : ''}`}
-            htmlFor="book-import"
             aria-label="导入 EPUB 或 TXT"
             aria-disabled={busy}
+            disabled={busy}
+            onClick={() => void startImport()}
           >
             <IconPlus size={20} />
-          </label>
+          </button>
         </div>
       </header>
 
       <input
         id="book-import"
+        ref={fileInputRef}
         className="visually-hidden"
         type="file"
         accept=".epub,.txt,application/epub+zip,text/plain"
@@ -313,14 +391,16 @@ export function App() {
             </h2>
             <p className="collection-subtitle">最近导入的书排在前面。点封面继续阅读。</p>
           </div>
-          <label
+          <button
+            type="button"
             className={`import-cta${busy ? ' disabled' : ''}`}
-            htmlFor="book-import"
             aria-disabled={busy}
+            disabled={busy}
+            onClick={() => void startImport()}
           >
             <IconPlus size={16} />
             导入
-          </label>
+          </button>
         </div>
 
         {busy ? (
@@ -350,14 +430,16 @@ export function App() {
             </span>
             <h3>从第一本书开始</h3>
             <p className="empty-hint">书库为空，先导入一本 EPUB 或 TXT。</p>
-            <label
+            <button
+              type="button"
               className={`import-cta${busy ? ' disabled' : ''}`}
-              htmlFor="book-import"
               aria-disabled={busy}
+              disabled={busy}
+              onClick={() => void startImport()}
             >
               <IconPlus size={16} />
               导入第一本书
-            </label>
+            </button>
           </section>
         ) : (
           <ul className="book-grid">
@@ -408,7 +490,7 @@ export function App() {
         )}
       </div>
 
-      <TabBar active="library" onSelect={() => setView('settings')} />
+      <TabBar active="library" onSelect={selectTab} />
 
       {sheetBook ? (
         <div

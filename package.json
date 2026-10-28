@@ -18,7 +18,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e:headed": "pnpm --filter @garagara/reader test:e2e -- --headed",
-    "test:e2e:debug": "pnpm --filter @garagara/reader test:e2e -- --debug"
+    "test:e2e:debug": "pnpm --filter @garagara/reader test:e2e -- --debug",
+    "cap:ios": "pnpm --filter @garagara/reader cap:ios",
+    "cap:sync": "pnpm --filter @garagara/reader cap:sync"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

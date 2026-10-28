@@ -2,12 +2,15 @@ import type { Sentence } from '@garagara/core';
 import type { DictionaryEntry, PhraseMatch } from '@garagara/lang-en';
 import { lemmatize } from '@garagara/lang-en';
 import { LlmError } from '@garagara/llm';
+import type { SqliteAdapter, VocabEntry } from '@garagara/storage';
+import { addVocab, findVocab, removeVocab } from '@garagara/storage';
 import type { WordInContextResult } from '@garagara/llm';
 import { useEffect, useRef, useState } from 'react';
 
 import { loadDictionary } from './dictionary.js';
 import { IconChevronRight, IconX } from './icons';
 import type { HitTestResult } from './hit-test.js';
+import { describeLlmError } from './llm-errors.js';
 import { isLlmConfigured, type ReaderLlmSettings } from './settings.js';
 import { phrasesForBlock, tokensForBlock } from './text-analysis.js';
 import { loadWordContext, type LlmRuntime, type WordContextTarget } from './llm.js';
@@ -17,8 +20,10 @@ interface CardData {
   loading: boolean;
   available: boolean;
   lemma: string;
+  wordLemma: string;
   phrase?: PhraseMatch;
   entries: DictionaryEntry[];
+  wordEntries: DictionaryEntry[];
 }
 
 type ContextView =
@@ -33,25 +38,6 @@ function cardKey(hit: HitTestResult): string {
   return `${hit.block.id}:${hit.token.start}`;
 }
 
-function contextErrorMessage(error: unknown): string {
-  if (error instanceof LlmError) {
-    if (error.kind === 'timeout') {
-      return '请求超时，请重试。';
-    }
-    if (error.kind === 'network') {
-      return '网络不可用，请检查连接后重试。';
-    }
-    if (error.kind === 'http' && (error.status === 401 || error.status === 403)) {
-      return 'API Key 或服务地址无效。';
-    }
-    if (error.kind === 'invalid_response') {
-      return 'AI 返回的内容格式不正确，可以重试。';
-    }
-    return error.message;
-  }
-  return error instanceof Error ? error.message : '请求失败，请重试。';
-}
-
 function contextSettings(runtime: LlmRuntime | undefined): ReaderLlmSettings | undefined {
   return runtime?.settings;
 }
@@ -60,16 +46,22 @@ export function WordCard({
   hit,
   sentence,
   llm,
+  adapter,
+  bookId,
   placement,
   onClose,
   onOpenSettings,
+  onTranslateSentence,
 }: {
   hit: HitTestResult;
   sentence?: Sentence;
   llm?: LlmRuntime;
+  adapter?: SqliteAdapter;
+  bookId?: string;
   placement: 'top' | 'bottom';
   onClose: () => void;
   onOpenSettings?: () => void;
+  onTranslateSentence?: () => void;
 }) {
   const initialKey = cardKey(hit);
   const [data, setData] = useState<CardData>({
@@ -77,8 +69,13 @@ export function WordCard({
     loading: true,
     available: true,
     lemma: hit.token.surface.toLowerCase(),
+    wordLemma: hit.token.surface.toLowerCase(),
     entries: [],
+    wordEntries: [],
   });
+  const [onlyWord, setOnlyWord] = useState(false);
+  const [vocabEntry, setVocabEntry] = useState<VocabEntry | null>(null);
+  const [vocabBusy, setVocabBusy] = useState(false);
   const [context, setContext] = useState<ContextView>({ status: 'idle' });
   const [expanded, setExpanded] = useState(false);
   const pointerStart = useRef<number | null>(null);
@@ -101,8 +98,11 @@ export function WordCard({
       loading: true,
       available: true,
       lemma: hit.token.surface.toLowerCase(),
+      wordLemma: hit.token.surface.toLowerCase(),
       entries: [],
+      wordEntries: [],
     });
+    setOnlyWord(false);
     setExpanded(false);
     loadDictionary()
       .then(async (dictionary) => {
@@ -115,7 +115,9 @@ export function WordCard({
             loading: false,
             available: false,
             lemma: hit.token.surface.toLowerCase(),
+            wordLemma: hit.token.surface.toLowerCase(),
             entries: [],
+            wordEntries: [],
           });
           return;
         }
@@ -124,25 +126,33 @@ export function WordCard({
         const phrase = phrasesForBlock(hit.block, dictionary).find(
           (match) => hit.token.start >= match.start && hit.token.end <= match.end,
         );
-        const lemma = phrase?.lemma ?? lemmas[0] ?? hit.token.surface.toLowerCase();
-        const candidates = phrase
-          ? [phrase.lemma]
-          : [...new Set([...lemmas, hit.token.surface.toLowerCase()])];
-        const entries: DictionaryEntry[] = [];
-        for (const candidate of candidates.slice(0, 4)) {
-          entries.push(...(await dictionary.lookup(candidate, 'en', 'zh')));
-          if (entries.length > 0) {
-            break;
+        const wordLemma = lemmas[0] ?? hit.token.surface.toLowerCase();
+        const lemma = phrase?.lemma ?? wordLemma;
+        const lookup = async (candidates: string[]): Promise<DictionaryEntry[]> => {
+          const found: DictionaryEntry[] = [];
+          for (const candidate of candidates.slice(0, 4)) {
+            found.push(...(await dictionary.lookup(candidate, 'en', 'zh')));
+            if (found.length > 0) {
+              break;
+            }
           }
-        }
+          return found;
+        };
+        const wordEntries = await lookup([
+          ...new Set([...lemmas, hit.token.surface.toLowerCase()]),
+        ]);
+        const phraseEntries = phrase ? await lookup([phrase.lemma]) : [];
+        const entries = phrase ? phraseEntries : wordEntries;
         if (active) {
           setData({
             hitKey,
             loading: false,
             available: true,
             lemma,
+            wordLemma,
             ...(phrase ? { phrase } : {}),
             entries,
+            wordEntries,
           });
         }
       })
@@ -153,7 +163,9 @@ export function WordCard({
             loading: false,
             available: false,
             lemma: hit.token.surface.toLowerCase(),
+            wordLemma: hit.token.surface.toLowerCase(),
             entries: [],
+            wordEntries: [],
           });
         }
       });
@@ -191,7 +203,7 @@ export function WordCard({
       if (error instanceof LlmError && error.kind === 'aborted') {
         return;
       }
-      setContext({ status: 'error', message: contextErrorMessage(error) });
+      setContext({ status: 'error', message: describeLlmError(error) });
     }
   }
 
@@ -237,9 +249,14 @@ export function WordCard({
     [],
   );
 
-  const title = data.phrase ? data.phrase.lemma : data.lemma;
-  const forms =
-    hit.token.surface.toLowerCase() === title.toLowerCase()
+  const showWordOnly = onlyWord && Boolean(data.phrase);
+  const title = showWordOnly ? data.wordLemma : data.lemma;
+  const entriesToShow = showWordOnly ? data.wordEntries : data.entries;
+  const forms = showWordOnly
+    ? hit.token.surface.toLowerCase() === data.wordLemma.toLowerCase()
+      ? ''
+      : `${hit.token.surface} → ${data.wordLemma}`
+    : hit.token.surface.toLowerCase() === title.toLowerCase()
       ? data.phrase
         ? '短语'
         : ''
@@ -248,6 +265,61 @@ export function WordCard({
   const configured = settings ? isLlmConfigured(settings) : false;
   const showManualButton =
     context.status === 'idle' || context.status === 'error' || context.status === 'offline';
+
+  useEffect(() => {
+    let active = true;
+    if (!adapter) {
+      setVocabEntry(null);
+      return;
+    }
+    findVocab(adapter, title, 'en')
+      .then((row) => {
+        if (active) {
+          setVocabEntry(row ?? null);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setVocabEntry(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [adapter, title]);
+
+  async function toggleVocab(): Promise<void> {
+    if (!adapter || !bookId) {
+      return;
+    }
+    setVocabBusy(true);
+    try {
+      if (vocabEntry) {
+        await removeVocab(adapter, vocabEntry.id);
+        setVocabEntry(null);
+      } else {
+        await addVocab(adapter, {
+          lemma: title,
+          surface: hit.token.surface,
+          lang: 'en',
+          sentenceText,
+          locator: {
+            bookId,
+            chapterIndex: hit.block.chapterIndex,
+            blockIndex: hit.block.index,
+            offset: hit.token.start,
+          },
+          ...(context.status === 'ready' ? { meaning: context.result.meaning } : {}),
+          ...(context.status === 'ready' ? { source: context.source } : {}),
+        });
+        setVocabEntry((await findVocab(adapter, title, 'en')) ?? null);
+      }
+    } catch {
+      // The card still works; a failed write simply leaves the star unchanged.
+    } finally {
+      setVocabBusy(false);
+    }
+  }
 
   return (
     <aside
@@ -282,19 +354,33 @@ export function WordCard({
       <header className="word-card-header">
         <div className="word-card-titleblock">
           <span className="word-card-kicker">
-            {data.phrase ? '短语' : '词条'} · {expanded ? '全屏' : '上滑展开'}
+            {data.phrase && !showWordOnly ? '短语' : '词条'} · {expanded ? '全屏' : '上滑展开'}
           </span>
           <h3>{title}</h3>
           {forms ? <p className="word-forms">{forms}</p> : null}
         </div>
-        <button
-          type="button"
-          className="icon-button word-card-close"
-          aria-label="关闭词卡"
-          onClick={onClose}
-        >
-          <IconX size={18} />
-        </button>
+        <div className="word-card-header-actions">
+          {adapter && bookId ? (
+            <button
+              type="button"
+              className={`word-star${vocabEntry ? ' is-collected' : ''}`}
+              aria-label={vocabEntry ? '移出生词本' : '加入生词本'}
+              aria-pressed={Boolean(vocabEntry)}
+              disabled={vocabBusy}
+              onClick={() => void toggleVocab()}
+            >
+              {vocabEntry ? '★' : '☆'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="icon-button word-card-close"
+            aria-label="关闭词卡"
+            onClick={onClose}
+          >
+            <IconX size={18} />
+          </button>
+        </div>
       </header>
 
       {sentence ? <blockquote className="word-context">{sentenceText}</blockquote> : null}
@@ -364,20 +450,42 @@ export function WordCard({
         ) : null}
       </section>
 
+      <div className="word-card-actions">
+        {onTranslateSentence ? (
+          <button type="button" className="word-card-action" onClick={onTranslateSentence}>
+            整句翻译
+          </button>
+        ) : null}
+        {data.phrase ? (
+          <button
+            type="button"
+            className="word-card-action"
+            onClick={() => setOnlyWord((value) => !value)}
+          >
+            {showWordOnly ? '看短语' : `只看 ${hit.token.surface}`}
+          </button>
+        ) : null}
+        {onOpenSettings ? (
+          <button type="button" className="word-card-action" onClick={onOpenSettings}>
+            AI 设置
+          </button>
+        ) : null}
+      </div>
+
       {data.loading ? <p className="muted word-card-status">正在查词典…</p> : null}
       {!data.loading && !data.available ? (
         <p className="muted word-card-status">词典文件不可用。</p>
       ) : null}
-      {!data.loading && data.available && data.entries.length === 0 ? (
+      {!data.loading && data.available && entriesToShow.length === 0 ? (
         <p className="muted word-card-status">没有找到释义。</p>
       ) : null}
-      {data.entries.length > 0 ? (
+      {entriesToShow.length > 0 ? (
         <section className="word-dictionary" aria-label="词典释义">
           <div className="word-section-head">
             <h4>词典</h4>
           </div>
           <div className="word-entries">
-            {data.entries.map((entry, index) => (
+            {entriesToShow.map((entry, index) => (
               <article key={`${entry.headword}:${index}`} className="word-entry">
                 <h4>
                   {entry.headword}

@@ -8,16 +8,26 @@
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "cap:sync": "pnpm build && cap sync ios",
+    "cap:ios": "pnpm build && cap sync ios && cap open ios"
   },
   "dependencies": {
+    "@capacitor-community/sqlite": "8.1.1",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/filesystem": "8.1.5",
+    "@capacitor/ios": "8.5.3",
+    "@capawesome/capacitor-file-picker": "8.1.1",
     "@garagara/core": "workspace:^",
     "@garagara/lang-en": "workspace:^",
     "@garagara/storage": "workspace:^",
+    "capacitor-secure-storage-plugin": "0.13.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.3",
     "@playwright/test": "^1.64.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

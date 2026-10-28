@@ -60,7 +60,7 @@ export function SettingsView({
   apiKey: string;
   backLabel: string;
   onBack: () => void;
-  onSaved: (settings: ReaderLlmSettings, apiKey: string) => void;
+  onSaved: (settings: ReaderLlmSettings, apiKey: string) => void | Promise<void>;
 }) {
   const [baseURL, setBaseURL] = useState(settings.baseURL);
   const [model, setModel] = useState(settings.model);
@@ -83,7 +83,7 @@ export function SettingsView({
     setSaveStatus({ state: 'saving' });
     try {
       await writeLlmSettings(adapter, draft);
-      onSaved(draft, keyDraft);
+      await onSaved(draft, keyDraft);
       setSaveStatus({ state: 'saved' });
     } catch (error) {
       setSaveStatus({ state: 'error', message: `保存失败：${reasonFor(error)}` });

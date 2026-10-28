@@ -2,7 +2,9 @@ import {
   LlmCache,
   OpenAiCompatibleProvider,
   buildLlmCacheKey,
+  buildTranslateSentenceMessages,
   buildWordInContextMessages,
+  parseTranslateSentenceResult,
   parseWordInContextResult,
   promptVersionFor,
   type LlmCacheKeyInput,
@@ -34,6 +36,10 @@ export type WordContextOutcome =
   | { status: 'ready'; result: WordInContextResult; source: 'cache' | 'llm' }
   | { status: 'offline'; message: string };
 
+export type TranslationOutcome =
+  | { status: 'ready'; translation: string; source: 'cache' | 'llm' }
+  | { status: 'offline'; message: string };
+
 function cacheInput(runtime: LlmRuntime, target: WordContextTarget): LlmCacheKeyInput {
   return {
     task: 'wordInContext',
@@ -43,6 +49,17 @@ function cacheInput(runtime: LlmRuntime, target: WordContextTarget): LlmCacheKey
     explainLang: EXPLAIN_LANG,
     model: runtime.settings.model,
     promptVersion: promptVersionFor('wordInContext'),
+  };
+}
+
+function translationCacheInput(runtime: LlmRuntime, sentence: string): LlmCacheKeyInput {
+  return {
+    task: 'translateSentence',
+    sentence,
+    l2: BOOK_LANG,
+    explainLang: EXPLAIN_LANG,
+    model: runtime.settings.model,
+    promptVersion: promptVersionFor('translateSentence'),
   };
 }
 
@@ -105,6 +122,39 @@ export async function loadWordContext(
   const result = parseWordInContextResult(completion.content, target.sentence);
   await cache.set(input, result);
   return { status: 'ready', result, source: 'llm' };
+}
+
+/**
+ * Cache-first sentence translation with the same offline rules as wordInContext.
+ * Translation is always requested for the whole sentence, even when it spans pages.
+ */
+export async function loadTranslation(
+  runtime: LlmRuntime,
+  sentence: string,
+  options: { allowNetwork: boolean; signal?: AbortSignal },
+): Promise<TranslationOutcome> {
+  if (!isLlmConfigured(runtime.settings)) {
+    throw new Error('LLM is not configured');
+  }
+  const cache = new LlmCache(runtime.adapter);
+  const input = translationCacheInput(runtime, sentence);
+  const cached = await cache.get<{ translation: string }>(input);
+  if (cached) {
+    return { status: 'ready', translation: cached.translation, source: 'cache' };
+  }
+  if (!options.allowNetwork) {
+    return { status: 'offline', message: '当前处于离线状态，且没有缓存。' };
+  }
+
+  const provider = createProvider(runtime);
+  const completion = await provider.complete({
+    messages: buildTranslateSentenceMessages({ sentence, explainLang: EXPLAIN_LANG }),
+    responseFormat: 'json',
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  const result = parseTranslateSentenceResult(completion.content);
+  await cache.set(input, result);
+  return { status: 'ready', translation: result.translation, source: 'llm' };
 }
 
 /** Pings the configured endpoint and returns a short model reply. */

@@ -226,6 +226,137 @@ export async function setSetting<T>(
   );
 }
 
+export interface VocabEntry {
+  id: string;
+  lemma: string;
+  surface: string;
+  lang: string;
+  sentenceText: string;
+  locator: Locator;
+  meaning: string;
+  source: string;
+  status: 'learning' | 'known';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface NewVocab {
+  lemma: string;
+  surface: string;
+  lang: string;
+  sentenceText: string;
+  locator: Locator;
+  meaning?: string;
+  source?: string;
+  status?: 'learning' | 'known';
+}
+
+interface VocabRow {
+  id: string;
+  lemma: string;
+  surface: string;
+  lang: string;
+  sentenceText: string;
+  locatorJson: string;
+  meaning: string;
+  source: string;
+  status: 'learning' | 'known';
+  createdAt: number;
+  updatedAt: number;
+}
+
+function toVocabEntry(row: VocabRow): VocabEntry {
+  return {
+    id: row.id,
+    lemma: row.lemma,
+    surface: row.surface,
+    lang: row.lang,
+    sentenceText: row.sentenceText,
+    locator: parseJson<Locator>(row.locatorJson, {
+      bookId: '',
+      chapterIndex: 0,
+      blockIndex: 0,
+      offset: 0,
+    }),
+    meaning: row.meaning,
+    source: row.source,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+const VOCAB_COLUMNS =
+  'id, lemma, surface, lang, sentenceText, locatorJson, meaning, source, status, createdAt, updatedAt';
+
+/** Finds an active vocabulary entry for a lemma in one language. */
+export async function findVocab(
+  adapter: SqliteAdapter,
+  lemma: string,
+  lang: string,
+): Promise<VocabEntry | undefined> {
+  const row = await adapter.get<VocabRow>(
+    `SELECT ${VOCAB_COLUMNS} FROM vocab
+     WHERE lemma = ? COLLATE NOCASE AND lang = ? AND deletedAt IS NULL
+     ORDER BY createdAt DESC LIMIT 1`,
+    [lemma, lang],
+  );
+  return row ? toVocabEntry(row) : undefined;
+}
+
+/** Adds a vocabulary entry with the book sentence snapshot and Locator. */
+export async function addVocab(
+  adapter: SqliteAdapter,
+  input: NewVocab,
+  now: number = Date.now(),
+): Promise<string> {
+  const id = uuidv7(now);
+  await adapter.run(
+    `INSERT INTO vocab
+       (id, lemma, surface, lang, sentenceText, locatorJson, meaning, source, status, createdAt, updatedAt, deletedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    [
+      id,
+      input.lemma,
+      input.surface,
+      input.lang,
+      input.sentenceText,
+      JSON.stringify(input.locator),
+      input.meaning ?? '',
+      input.source ?? '',
+      input.status ?? 'learning',
+      now,
+      now,
+    ],
+  );
+  return id;
+}
+
+export async function removeVocab(
+  adapter: SqliteAdapter,
+  id: string,
+  now: number = Date.now(),
+): Promise<void> {
+  await adapter.run('UPDATE vocab SET deletedAt = ?, updatedAt = ? WHERE id = ?', [now, now, id]);
+}
+
+export async function setVocabStatus(
+  adapter: SqliteAdapter,
+  id: string,
+  status: 'learning' | 'known',
+  now: number = Date.now(),
+): Promise<void> {
+  await adapter.run('UPDATE vocab SET status = ?, updatedAt = ? WHERE id = ?', [status, now, id]);
+}
+
+/** Lists active vocabulary entries, newest first. */
+export async function listVocab(adapter: SqliteAdapter): Promise<VocabEntry[]> {
+  const rows = await adapter.all<VocabRow>(
+    `SELECT ${VOCAB_COLUMNS} FROM vocab WHERE deletedAt IS NULL ORDER BY createdAt DESC, id`,
+  );
+  return rows.map(toVocabEntry);
+}
+
 export async function getProgress(
   adapter: SqliteAdapter,
   bookId: string,

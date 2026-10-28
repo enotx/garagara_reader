@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/coverage/**',
       '**/node_modules/**',
       'apps/reader/public/wa-sqlite/**',
+      'apps/reader/ios/**',
     ],
   },
   js.configs.recommended,

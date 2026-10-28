@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildPageMap, type PageFragment } from './page-map.js';
+import { buildPageMap, pageIndexForLocator, type PageFragment } from './page-map.js';
 
 const chapter = {
   index: 2,
@@ -72,5 +72,35 @@ describe('buildPageMap', () => {
       ['b0', 80, 'sentence'],
       ['b1', 0, 'sentence'],
     ]);
+  });
+});
+
+describe('pageIndexForLocator', () => {
+  const base = { bookId: 'b', chapterIndex: 0 };
+  const pages = [
+    {
+      index: 0,
+      startLocator: { ...base, blockIndex: 0, offset: 0 },
+      endLocator: { ...base, blockIndex: 1, offset: 5 },
+      segments: [],
+    },
+    {
+      index: 1,
+      startLocator: { ...base, blockIndex: 1, offset: 5 },
+      endLocator: { ...base, blockIndex: 2, offset: 0 },
+      segments: [],
+    },
+  ];
+
+  it('finds the page containing a locator', () => {
+    expect(pageIndexForLocator(pages, { ...base, blockIndex: 0, offset: 3 })).toBe(0);
+    expect(pageIndexForLocator(pages, { ...base, blockIndex: 1, offset: 5 })).toBe(1);
+    expect(pageIndexForLocator(pages, { ...base, blockIndex: 1, offset: 8 })).toBe(1);
+  });
+
+  it('clamps before the first page and after the last page', () => {
+    expect(pageIndexForLocator(pages, { ...base, blockIndex: 0, offset: 0 })).toBe(0);
+    expect(pageIndexForLocator(pages, { ...base, blockIndex: 9, offset: 0 })).toBe(1);
+    expect(pageIndexForLocator([], { ...base, blockIndex: 0, offset: 0 })).toBe(0);
   });
 });

@@ -1,19 +1,35 @@
-import type { Note } from '@garagara/core';
+import type { Locator, Note } from '@garagara/core';
 import type { BookSummary, ChapterSummary, StoredChapter } from '@garagara/storage';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ChapterView } from './ChapterView.js';
+import {
+  findFocusIndex,
+  firstSegmentOnPage,
+  focusPositions,
+  initialFocusPosition,
+  positionForSentence,
+  sentenceIdForSegment,
+  stepFocus,
+  toFocusTarget,
+  type FocusTarget,
+  type FocusUnit,
+} from './focus.js';
+import { FocusSubtitle } from './FocusSubtitle.js';
 import { createGestureState, reduceGesture, type GestureEvent } from './gestures.js';
-import { IconChevronLeft, IconChevronRight, IconX } from './icons';
-import { buildPageMap, type PageInfo } from './page-map.js';
+import { outlineRects, rangeForBlockOffsets, type OutlineRect } from './highlight.js';
+import { IconChevronLeft, IconChevronRight, IconPlay, IconX } from './icons';
+import { buildPageMap, pageIndexForLocator, type PageInfo } from './page-map.js';
 import { hitTestPoint, type HitTestResult } from './hit-test.js';
 import { collectPageFragments } from './page-map-dom.js';
 import type { LlmRuntime } from './llm.js';
 import { THEMES, type Theme } from './theme.js';
+import { TranslationPopover } from './TranslationPopover.js';
 import { WordCard } from './WordCard.js';
 
 const COLUMN_GAP = 40;
 const FONT_SCALE_KEY = 'garagara.reader.fontScale';
+const FOCUS_UNIT_KEY = 'garagara.reader.focusUnit';
 const MIN_FONT_SCALE = 70;
 const MAX_FONT_SCALE = 180;
 
@@ -24,6 +40,14 @@ interface Anchor {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function initialFocusUnit(): FocusUnit {
+  try {
+    return localStorage.getItem(FOCUS_UNIT_KEY) === 'chunk' ? 'chunk' : 'sentence';
+  } catch {
+    return 'sentence';
+  }
 }
 
 function initialFontScale(): number {
@@ -46,6 +70,7 @@ export function ReaderView({
   notes,
   theme,
   llm,
+  initialLocator,
   onThemeChange,
   onChapterChange,
   onExit,
@@ -58,6 +83,7 @@ export function ReaderView({
   notes: Note[];
   theme: Theme;
   llm?: LlmRuntime;
+  initialLocator?: Locator;
   onThemeChange: (theme: Theme) => void;
   onChapterChange: (chapterIndex: number) => void;
   onExit: () => void;
@@ -68,6 +94,7 @@ export function ReaderView({
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const [hit, setHit] = useState<HitTestResult | null>(null);
   const pendingAnchor = useRef<Anchor | null>(null);
+  const initialLocatorApplied = useRef(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -79,6 +106,18 @@ export function ReaderView({
     null,
   );
   const [note, setNote] = useState<Note | null>(null);
+  const [translation, setTranslation] = useState<{
+    text: string;
+    placement: 'top' | 'bottom';
+  } | null>(null);
+  const [focusEnabled, setFocusEnabled] = useState(false);
+  const [focusUnit, setFocusUnit] = useState<FocusUnit>(initialFocusUnit);
+  const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
+  const [subtitlesOn, setSubtitlesOn] = useState(true);
+  const [subtitlePlacement, setSubtitlePlacement] = useState<'top' | 'bottom'>('bottom');
+  const [focusOutlines, setFocusOutlines] = useState<OutlineRect[]>([]);
+  const longPressTimer = useRef<number | null>(null);
+  const longPressFired = useRef(false);
 
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -119,6 +158,40 @@ export function ReaderView({
     }
     return [...pagesBySentence.entries()].filter(([, pages]) => pages.size > 1).map(([id]) => id);
   }, [pageMap]);
+
+  const focusOrder = useMemo(() => focusPositions(pageMap, focusUnit), [pageMap, focusUnit]);
+  const focusIndex = useMemo(
+    () => findFocusIndex(focusOrder, focusTarget),
+    [focusOrder, focusTarget],
+  );
+  const focusSentence = useMemo(() => {
+    if (!focusTarget) {
+      return undefined;
+    }
+    const sentenceId = sentenceIdForSegment(focusTarget);
+    return chapter.sentences.find((sentence) => sentence.id === sentenceId);
+  }, [focusTarget, chapter.sentences]);
+  const focusSentenceText = useMemo(() => {
+    if (!focusSentence) {
+      return '';
+    }
+    const block = chapter.blocks.find((item) => item.id === focusSentence.blockId);
+    return block ? block.text.slice(focusSentence.start, focusSentence.end) : '';
+  }, [focusSentence, chapter.blocks]);
+  const nextSentenceTexts = useMemo(() => {
+    if (!focusSentence) {
+      return [];
+    }
+    const start = chapter.sentences.findIndex((sentence) => sentence.id === focusSentence.id);
+    const texts: string[] = [];
+    for (const sentence of chapter.sentences.slice(start + 1, start + 4)) {
+      const block = chapter.blocks.find((item) => item.id === sentence.blockId);
+      if (block) {
+        texts.push(block.text.slice(sentence.start, sentence.end));
+      }
+    }
+    return texts;
+  }, [focusSentence, chapter.sentences, chapter.blocks]);
 
   function captureVisibleAnchor(): Anchor | null {
     const viewport = viewportRef.current;
@@ -229,19 +302,180 @@ export function ReaderView({
         }
         pendingAnchor.current = null;
       }
-      setPageMap(
-        buildPageMap(
-          book.id,
-          chapter,
-          collectPageFragments(content, size.width + COLUMN_GAP),
-          pages,
-        ),
+      const nextPageMap = buildPageMap(
+        book.id,
+        chapter,
+        collectPageFragments(content, size.width + COLUMN_GAP),
+        pages,
       );
+      setPageMap(nextPageMap);
       setPageCount(pages);
+      if (
+        initialLocator &&
+        !initialLocatorApplied.current &&
+        initialLocator.chapterIndex === chapter.index
+      ) {
+        target = pageIndexForLocator(nextPageMap, initialLocator);
+        initialLocatorApplied.current = true;
+      }
       setPage(target);
     });
     return () => cancelAnimationFrame(frame);
   }, [chapter, size.width, size.height, fontScale, fontsReady]);
+
+  useEffect(() => {
+    if (!focusEnabled) {
+      if (focusTarget) {
+        setFocusTarget(null);
+      }
+      return;
+    }
+    if (focusOrder.length === 0) {
+      if (focusTarget) {
+        setFocusTarget(null);
+      }
+      return;
+    }
+    if (findFocusIndex(focusOrder, focusTarget) >= 0) {
+      return;
+    }
+    const initial = initialFocusPosition(focusOrder, pageRef.current);
+    setFocusTarget(initial ? toFocusTarget(initial.segment) : null);
+  }, [focusEnabled, focusOrder, focusTarget]);
+
+  useEffect(() => {
+    if (!focusEnabled || !focusTarget) {
+      return;
+    }
+    const index = findFocusIndex(focusOrder, focusTarget);
+    if (index < 0) {
+      return;
+    }
+    const targetPage = focusOrder[index]?.page;
+    if (targetPage !== undefined && targetPage !== pageRef.current) {
+      setPage(targetPage);
+    }
+  }, [focusEnabled, focusTarget, focusOrder]);
+
+  useEffect(() => {
+    if (typeof CSS === 'undefined' || !CSS.highlights) {
+      return;
+    }
+    CSS.highlights.delete('focus-dim');
+    CSS.highlights.delete('focus-sentence');
+    CSS.highlights.delete('focus-segment');
+    setFocusOutlines([]);
+    if (!focusEnabled || !focusTarget) {
+      return;
+    }
+    const content = contentRef.current;
+    const viewport = viewportRef.current;
+    if (!content) {
+      return;
+    }
+    const sentence = chapter.sentences.find(
+      (item) => item.id === sentenceIdForSegment(focusTarget),
+    );
+    const sentenceRange = sentence
+      ? rangeForBlockOffsets(content, sentence.blockId, sentence.start, sentence.end)
+      : undefined;
+    const segmentRange = rangeForBlockOffsets(
+      content,
+      focusTarget.blockId,
+      focusTarget.start,
+      focusTarget.end,
+    );
+    const dimRange = document.createRange();
+    dimRange.selectNodeContents(content);
+    CSS.highlights.set('focus-dim', new Highlight(dimRange));
+    if (sentenceRange) {
+      CSS.highlights.set('focus-sentence', new Highlight(sentenceRange));
+    }
+    if (segmentRange) {
+      CSS.highlights.set('focus-segment', new Highlight(segmentRange));
+    }
+
+    let timer: number | undefined;
+    const updateOutlines = (): void => {
+      if (!segmentRange || !viewport) {
+        return;
+      }
+      const bounds = viewport.getBoundingClientRect();
+      const rect = [...segmentRange.getClientRects()].find(
+        (item) =>
+          item.width > 0 && item.height > 0 && item.bottom > bounds.top && item.top < bounds.bottom,
+      );
+      if (rect) {
+        setSubtitlePlacement(rect.top < bounds.top + bounds.height / 2 ? 'bottom' : 'top');
+      }
+      if (theme === 'eink') {
+        setFocusOutlines(outlineRects(segmentRange, viewport));
+        timer = window.setTimeout(() => {
+          setFocusOutlines(outlineRects(segmentRange, viewport));
+        }, 220);
+      } else {
+        setFocusOutlines([]);
+      }
+    };
+    updateOutlines();
+
+    return () => {
+      CSS.highlights.delete('focus-dim');
+      CSS.highlights.delete('focus-sentence');
+      CSS.highlights.delete('focus-segment');
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [
+    focusEnabled,
+    focusTarget,
+    chapter,
+    theme,
+    page,
+    size.width,
+    size.height,
+    fontScale,
+    pageMap,
+    focusUnit,
+  ]);
+
+  function setFocusMode(enabled: boolean): void {
+    setFocusEnabled(enabled);
+    if (!enabled) {
+      setFocusTarget(null);
+    }
+    setGesture(createGestureState());
+  }
+
+  function changeFocusUnit(unit: FocusUnit): void {
+    setFocusUnit(unit);
+    setFocusTarget(null);
+    try {
+      localStorage.setItem(FOCUS_UNIT_KEY, unit);
+    } catch {
+      // Ignore storage failures; the in-memory setting still applies.
+    }
+  }
+
+  function moveFocus(direction: 'next' | 'prev'): void {
+    const next = stepFocus(focusOrder, focusTarget, direction);
+    if (next) {
+      setFocusTarget(toFocusTarget(next.segment));
+    }
+  }
+
+  function moveFocusToSentence(sentenceId: string): void {
+    const position = positionForSentence(focusOrder, sentenceId);
+    if (position) {
+      setFocusTarget(toFocusTarget(position.segment));
+    }
+  }
+
+  function focusPage(pageIndex: number): void {
+    const first = firstSegmentOnPage(focusOrder, pageIndex);
+    setFocusTarget(first ? toFocusTarget(first.segment) : null);
+  }
 
   function adjustFont(delta: number): void {
     pendingAnchor.current = captureVisibleAnchor() ?? pendingAnchor.current;
@@ -258,7 +492,11 @@ export function ReaderView({
 
   function previousPage(): void {
     if (page > 0) {
-      setPage(page - 1);
+      const targetPage = page - 1;
+      setPage(targetPage);
+      if (focusEnabled) {
+        focusPage(targetPage);
+      }
       return;
     }
     if (previousChapter) {
@@ -268,7 +506,11 @@ export function ReaderView({
 
   function nextPage(): void {
     if (page < pageCount - 1) {
-      setPage(page + 1);
+      const targetPage = page + 1;
+      setPage(targetPage);
+      if (focusEnabled) {
+        focusPage(targetPage);
+      }
       return;
     }
     if (nextChapter) {
@@ -276,8 +518,54 @@ export function ReaderView({
     }
   }
 
+  function clearLongPress(): void {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  function beginLongPress(x: number, y: number): void {
+    clearLongPress();
+    if (card || note || translation) {
+      return;
+    }
+    longPressTimer.current = window.setTimeout(() => {
+      longPressTimer.current = null;
+      const result = hitTestPoint(x, y, chapter);
+      if (!result?.sentenceId) {
+        return;
+      }
+      if (focusEnabled) {
+        longPressFired.current = true;
+        moveFocusToSentence(result.sentenceId);
+        setGesture(createGestureState());
+        return;
+      }
+      const sentence = chapter.sentences.find((item) => item.id === result.sentenceId);
+      if (!sentence) {
+        return;
+      }
+      const block = chapter.blocks.find((item) => item.id === sentence.blockId);
+      if (!block) {
+        return;
+      }
+      const bounds = viewportRef.current?.getBoundingClientRect();
+      const placement = bounds && y < bounds.top + bounds.height / 2 ? 'bottom' : 'top';
+      longPressFired.current = true;
+      setTranslation({
+        text: block.text.slice(sentence.start, sentence.end),
+        placement,
+      });
+      setCard(null);
+      setHit(null);
+      setNote(null);
+      setGesture(createGestureState());
+    }, 500);
+  }
+
   function applyGesture(event: GestureEvent): void {
-    const result = reduceGesture(gesture, event);
+    const result = reduceGesture(gesture, event, { focus: focusEnabled });
     setGesture(result.state);
     for (const command of result.commands) {
       if (command.type === 'turnPage') {
@@ -289,6 +577,10 @@ export function ReaderView({
       } else if (command.type === 'closeCard') {
         setCard(null);
         setHit(null);
+      } else if (command.type === 'advanceFocus') {
+        moveFocus('next');
+      } else if (command.type === 'focusSentence') {
+        moveFocusToSentence(command.sentenceId);
       }
     }
   }
@@ -301,6 +593,16 @@ export function ReaderView({
       } else if (event.key === 'ArrowRight' || event.key === 'PageDown') {
         event.preventDefault();
         nextPage();
+      } else if (event.key === ' ') {
+        event.preventDefault();
+        if (focusEnabled) {
+          moveFocus('next');
+        } else {
+          nextPage();
+        }
+      } else if (event.key === 'f' || event.key === 'F') {
+        event.preventDefault();
+        setFocusMode(!focusEnabled);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -344,11 +646,27 @@ export function ReaderView({
   }, [hit]);
 
   return (
-    <div className="reader" data-menu-open={gesture.menuOpen ? 'true' : 'false'}>
+    <div
+      className="reader"
+      data-menu-open={gesture.menuOpen ? 'true' : 'false'}
+      data-focus={focusEnabled ? 'true' : 'false'}
+      data-focus-unit={focusUnit}
+      data-focus-id={focusTarget?.id}
+      data-focus-next-count={nextSentenceTexts.length}
+      data-page={page}
+      data-page-count={pageCount}
+    >
       <header
         className="reader-header"
         onClick={() => {
-          setNote(null);
+          if (translation || card || note) {
+            setTranslation(null);
+            setCard(null);
+            setHit(null);
+            setNote(null);
+            setGesture(createGestureState());
+            return;
+          }
           applyGesture({ type: 'tap', target: 'chrome' });
         }}
       >
@@ -436,8 +754,25 @@ export function ReaderView({
         data-hit-end={hit?.token.end}
         onPointerDown={(event) => {
           pointerStart.current = { x: event.clientX, y: event.clientY };
+          longPressFired.current = false;
+          beginLongPress(event.clientX, event.clientY);
+        }}
+        onPointerMove={(event) => {
+          const start = pointerStart.current;
+          if (!start) {
+            return;
+          }
+          if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) {
+            clearLongPress();
+          }
         }}
         onPointerUp={(event) => {
+          clearLongPress();
+          if (longPressFired.current) {
+            longPressFired.current = false;
+            pointerStart.current = null;
+            return;
+          }
           const start = pointerStart.current;
           pointerStart.current = null;
           if (start === null) {
@@ -446,6 +781,14 @@ export function ReaderView({
           const deltaX = event.clientX - start.x;
           const deltaY = event.clientY - start.y;
           if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
+            if (translation || card || note) {
+              setTranslation(null);
+              setCard(null);
+              setHit(null);
+              setNote(null);
+              setGesture(createGestureState());
+              return;
+            }
             applyGesture({
               type: 'swipe',
               direction: deltaX < 0 ? 'left' : 'right',
@@ -453,6 +796,10 @@ export function ReaderView({
             return;
           }
           if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+            if (translation) {
+              setTranslation(null);
+              return;
+            }
             const noteElement = (
               document.elementFromPoint(event.clientX, event.clientY) as Element | null
             )?.closest<HTMLElement>('[data-note-id]');
@@ -468,22 +815,32 @@ export function ReaderView({
               }
             }
             const result = hitTestPoint(event.clientX, event.clientY, chapter) ?? null;
-            setHit(result);
             if (result) {
+              const currentSentenceId = focusTarget ? sentenceIdForSegment(focusTarget) : undefined;
+              const sameSentence =
+                !focusEnabled ||
+                currentSentenceId === undefined ||
+                result.sentenceId === currentSentenceId;
+              setHit(sameSentence ? result : null);
               setNote(null);
-              const viewport = viewportRef.current;
-              const bounds = viewport?.getBoundingClientRect();
-              const placement =
-                bounds && event.clientY < bounds.top + bounds.height / 2 ? 'bottom' : 'top';
-              setCard({ hit: result, placement });
               applyGesture({
                 type: 'tap',
                 target: 'word',
                 word: result.token.surface,
                 sentenceId: result.sentenceId ?? '',
-                sameSentence: true,
+                sameSentence,
               });
+              if (!sameSentence) {
+                setCard(null);
+                return;
+              }
+              const viewport = viewportRef.current;
+              const bounds = viewport?.getBoundingClientRect();
+              const placement =
+                bounds && event.clientY < bounds.top + bounds.height / 2 ? 'bottom' : 'top';
+              setCard({ hit: result, placement });
             } else {
+              setHit(null);
               if (note) {
                 setNote(null);
                 return;
@@ -494,8 +851,11 @@ export function ReaderView({
           }
         }}
         onPointerCancel={() => {
+          clearLongPress();
+          longPressFired.current = false;
           pointerStart.current = null;
         }}
+        onContextMenu={(event) => event.preventDefault()}
       >
         <div
           ref={contentRef}
@@ -511,6 +871,22 @@ export function ReaderView({
         >
           <ChapterView chapter={chapter} />
         </div>
+        {focusEnabled && focusOutlines.length > 0 ? (
+          <div className="focus-outline-layer" aria-hidden="true">
+            {focusOutlines.map((rect, index) => (
+              <span
+                key={index}
+                className="focus-outline"
+                style={{
+                  left: `${rect.left}px`,
+                  top: `${rect.top}px`,
+                  width: `${rect.width}px`,
+                  height: `${rect.height}px`,
+                }}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {card ? (
@@ -522,12 +898,49 @@ export function ReaderView({
           })()}
           placement={card.placement}
           {...(llm ? { llm } : {})}
+          {...(llm ? { adapter: llm.adapter } : {})}
+          bookId={book.id}
           onOpenSettings={onOpenSettings}
+          onTranslateSentence={() => {
+            const sentence = chapter.sentences.find((item) => item.id === card.hit.sentenceId);
+            const block = sentence
+              ? chapter.blocks.find((item) => item.id === sentence.blockId)
+              : undefined;
+            if (!sentence || !block) {
+              return;
+            }
+            setTranslation({
+              text: block.text.slice(sentence.start, sentence.end),
+              placement: card.placement,
+            });
+            setCard(null);
+            setHit(null);
+            setGesture(createGestureState());
+          }}
           onClose={() => {
             setCard(null);
             setHit(null);
             setGesture(createGestureState());
           }}
+        />
+      ) : null}
+
+      {translation ? (
+        <TranslationPopover
+          sentence={translation.text}
+          placement={translation.placement}
+          {...(llm ? { llm } : {})}
+          onOpenSettings={onOpenSettings}
+          onClose={() => setTranslation(null)}
+        />
+      ) : null}
+
+      {focusEnabled && subtitlesOn && focusSentenceText ? (
+        <FocusSubtitle
+          sentence={focusSentenceText}
+          nextSentences={nextSentenceTexts}
+          placement={subtitlePlacement}
+          {...(llm ? { llm } : {})}
         />
       ) : null}
 
@@ -549,47 +962,100 @@ export function ReaderView({
       ) : null}
 
       <footer
-        className="reader-footer"
+        className={`reader-footer${focusEnabled ? ' focus' : ''}`}
         onClick={() => {
-          setNote(null);
+          if (translation || card || note) {
+            setTranslation(null);
+            setCard(null);
+            setHit(null);
+            setNote(null);
+            setGesture(createGestureState());
+            return;
+          }
           applyGesture({ type: 'tap', target: 'chrome' });
         }}
       >
-        <button
-          type="button"
-          className="reader-button"
-          aria-label="上一页"
-          onClick={(event) => {
-            event.stopPropagation();
-            previousPage();
-          }}
-          disabled={page === 0 && !previousChapter}
-        >
-          <IconChevronLeft size={20} />
-        </button>
-        <div className="reader-progress" aria-live="polite">
-          <span className="progress-chapter">
-            第 {chapter.index + 1} / {chapters.length} 章
-          </span>
-          <span className="progress-separator" aria-hidden="true">
-            ·
-          </span>
-          <span className="progress-meta">
-            {page + 1} / {pageCount} 页 · {overallPercent}%
-          </span>
-        </div>
-        <button
-          type="button"
-          className="reader-button"
-          aria-label="下一页"
-          onClick={(event) => {
-            event.stopPropagation();
-            nextPage();
-          }}
-          disabled={page >= pageCount - 1 && !nextChapter}
-        >
-          <IconChevronRight size={20} />
-        </button>
+        {focusEnabled ? (
+          <>
+            <button
+              type="button"
+              className="reader-button"
+              aria-label="上一片段"
+              onClick={(event) => {
+                event.stopPropagation();
+                moveFocus('prev');
+              }}
+              disabled={focusIndex <= 0}
+            >
+              <IconChevronLeft size={20} />
+            </button>
+            <button
+              type="button"
+              className={`focus-subtitle-toggle${subtitlesOn ? ' is-active' : ''}`}
+              aria-label="字幕"
+              aria-pressed={subtitlesOn}
+              onClick={(event) => {
+                event.stopPropagation();
+                setSubtitlesOn((value) => !value);
+              }}
+            >
+              译
+            </button>
+            <button
+              type="button"
+              className="reader-button"
+              aria-label="下一片段"
+              onClick={(event) => {
+                event.stopPropagation();
+                moveFocus('next');
+              }}
+              disabled={focusIndex < 0 || focusIndex >= focusOrder.length - 1}
+            >
+              <IconChevronRight size={20} />
+            </button>
+            <button type="button" className="reader-button" aria-label="播放（v0.2）" disabled>
+              <IconPlay size={18} />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="reader-button"
+              aria-label="上一页"
+              onClick={(event) => {
+                event.stopPropagation();
+                previousPage();
+              }}
+              disabled={page === 0 && !previousChapter}
+            >
+              <IconChevronLeft size={20} />
+            </button>
+            <div className="reader-progress" aria-live="polite">
+              <span className="progress-chapter">
+                第 {chapter.index + 1} / {chapters.length} 章
+              </span>
+              <span className="progress-separator" aria-hidden="true">
+                ·
+              </span>
+              <span className="progress-meta">
+                {page + 1} / {pageCount} 页 · {overallPercent}%
+              </span>
+            </div>
+            <button
+              type="button"
+              className="reader-button"
+              aria-label="下一页"
+              onClick={(event) => {
+                event.stopPropagation();
+                nextPage();
+              }}
+              disabled={page >= pageCount - 1 && !nextChapter}
+            >
+              <IconChevronRight size={20} />
+            </button>
+          </>
+        )}
       </footer>
 
       {gesture.menuOpen ? (
@@ -613,6 +1079,26 @@ export function ReaderView({
               A+
             </button>
           </div>
+          <button
+            type="button"
+            className={`reader-button focus-toggle${focusEnabled ? ' solid' : ''}`}
+            aria-pressed={focusEnabled}
+            onClick={() => setFocusMode(!focusEnabled)}
+          >
+            Focus
+          </button>
+          <label className="menu-field focus-unit-field">
+            <span className="menu-field-label">推进单位</span>
+            <select
+              className="theme-select"
+              aria-label="Focus 推进单位"
+              value={focusUnit}
+              onChange={(event) => changeFocusUnit(event.target.value as FocusUnit)}
+            >
+              <option value="sentence">句子</option>
+              <option value="chunk">意群</option>
+            </select>
+          </label>
           <span className="menu-note">正文分页只在排版变化时重算</span>
         </div>
       ) : null}

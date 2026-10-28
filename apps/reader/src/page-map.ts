@@ -173,3 +173,27 @@ export function buildPageMap(
   }
   return pages;
 }
+
+function comparePosition(
+  a: Pick<Locator, 'blockIndex' | 'offset'>,
+  b: Pick<Locator, 'blockIndex' | 'offset'>,
+): number {
+  return a.blockIndex - b.blockIndex || a.offset - b.offset;
+}
+
+/** Finds the page containing a Locator inside the current chapter. */
+export function pageIndexForLocator(pages: readonly PageInfo[], locator: Locator): number {
+  if (pages.length === 0) {
+    return 0;
+  }
+  for (const page of pages) {
+    if (
+      comparePosition(page.startLocator, locator) <= 0 &&
+      comparePosition(page.endLocator, locator) > 0
+    ) {
+      return page.index;
+    }
+  }
+  const next = pages.find((page) => comparePosition(page.endLocator, locator) > 0);
+  return next ? next.index : (pages[pages.length - 1]?.index ?? 0);
+}

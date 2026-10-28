@@ -4,3 +4,4 @@ coverage/
 pnpm-lock.yaml
 *.md
 apps/reader/public/wa-sqlite/
+apps/reader/ios/

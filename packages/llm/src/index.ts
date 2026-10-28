@@ -21,3 +21,9 @@ export {
   type WordInContextPhrase,
   type WordInContextResult,
 } from './word-in-context.js';
+export {
+  buildTranslateSentenceMessages,
+  parseTranslateSentenceResult,
+  type TranslateSentenceInput,
+  type TranslateSentenceResult,
+} from './translate-sentence.js';

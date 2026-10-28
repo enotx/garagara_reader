@@ -125,3 +125,20 @@ export function IconDownload(props: IconProps) {
     </Svg>
   );
 }
+
+export function IconCopy(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+    </Svg>
+  );
+}
+
+export function IconPlay(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M8 5.5v13l10-6.5Z" />
+    </Svg>
+  );
+}

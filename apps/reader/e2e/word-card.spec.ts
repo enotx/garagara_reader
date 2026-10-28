@@ -88,3 +88,19 @@ test('expands a phrase and shows its dictionary entry', async ({ page }) => {
   await expect(card).toContainText('考虑');
   await expect(card).toContainText('took → take into account · 短语');
 });
+
+test('toggles between the phrase and the single word', async ({ page }) => {
+  await openCardBook(page);
+  const point = await wordPoint(page, 'took');
+  expect(point).not.toBeNull();
+  if (point) {
+    await page.mouse.click(point.x, point.y);
+  }
+  const card = page.locator('[data-word-card]');
+  await expect(card).toHaveAttribute('data-card-title', 'take into account');
+  await card.getByRole('button', { name: '只看 took' }).click();
+  await expect(card).toHaveAttribute('data-card-title', 'take');
+  await expect(card.getByRole('button', { name: '看短语' })).toBeVisible();
+  await card.getByRole('button', { name: '看短语' }).click();
+  await expect(card).toHaveAttribute('data-card-title', 'take into account');
+});
