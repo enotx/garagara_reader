@@ -169,6 +169,49 @@ export async function getChapter(
   };
 }
 
+export interface PlayableSentence {
+  id: string;
+  text: string;
+  /** Start position of the sentence in the book. */
+  locator: Locator;
+}
+
+interface PlayableSentenceRow {
+  id: string;
+  text: string;
+  chapterIndex: number;
+  blockIndex: number;
+  start: number;
+}
+
+/**
+ * Reads the whole book's sentences in playback order. Native engines query the
+ * same rows directly; the Web engine consumes this list through a queue source.
+ */
+export async function listPlayableSentences(
+  adapter: SqliteAdapter,
+  bookId: string,
+): Promise<PlayableSentence[]> {
+  const rows = await adapter.all<PlayableSentenceRow>(
+    `SELECT s.id, s.text, s.chapterIndex, b."index" AS blockIndex, s.start
+     FROM sentences s
+     JOIN blocks b ON b.id = s.blockId
+     WHERE s.bookId = ?
+     ORDER BY s.chapterIndex, b."index", s."index"`,
+    [bookId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    text: row.text,
+    locator: {
+      bookId,
+      chapterIndex: row.chapterIndex,
+      blockIndex: row.blockIndex,
+      offset: row.start,
+    },
+  }));
+}
+
 export async function listNotes(adapter: SqliteAdapter, bookId: string): Promise<Note[]> {
   const rows = await adapter.all<{ id: string; text: string; marksJson: string }>(
     'SELECT id, text, marksJson FROM notes WHERE bookId = ? ORDER BY id',
