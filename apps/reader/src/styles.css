@@ -2909,11 +2909,17 @@ button:disabled {
 }
 
 :root[data-theme='eink'] .reader-menu,
+:root[data-theme='eink'] .playback-return,
 :root[data-theme='eink'] .word-card,
 :root[data-theme='eink'] .note-popup,
 :root[data-theme='eink'] .translation-popover,
 :root[data-theme='eink'] .sheet {
   border: 1.5px solid var(--text);
+}
+
+:root[data-theme='eink'] .playback-return {
+  border-radius: 0;
+  box-shadow: none;
 }
 
 :root[data-theme='eink'] .book-cover,
@@ -2968,4 +2974,20 @@ button:disabled {
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }
+}
+
+.playback-return {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--chrome-height) + var(--safe-bottom) + 0.75rem);
+  z-index: 26;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sheet);
+  font-size: 0.8rem;
+  font-weight: 600;
+  transform: translateX(-50%);
 }

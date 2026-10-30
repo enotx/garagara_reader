@@ -142,3 +142,11 @@ export function IconPlay(props: IconProps) {
     </Svg>
   );
 }
+
+export function IconPause(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9 5v14M15 5v14" />
+    </Svg>
+  );
+}

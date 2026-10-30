@@ -228,6 +228,10 @@ export class WebSpeechPlaybackEngine implements PlaybackEngine {
     listeners.add(cb as (event: unknown) => void);
   }
 
+  off<E extends PlaybackEvent>(event: E, cb: PlaybackListener<E>): void {
+    this.listeners.get(event)?.delete(cb as (event: unknown) => void);
+  }
+
   private seek(delta: number): void {
     if (this.queue.length === 0 || this.index < 0) {
       return;

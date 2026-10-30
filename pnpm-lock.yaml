@@ -59,6 +59,9 @@ importers:
       '@garagara/lang-en':
         specifier: workspace:^
         version: link:../../packages/lang-en
+      '@garagara/playback':
+        specifier: workspace:^
+        version: link:../../packages/playback
       '@garagara/storage':
         specifier: workspace:^
         version: link:../../packages/storage

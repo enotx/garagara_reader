@@ -48,4 +48,5 @@ export interface PlaybackEngine {
   setVoice(voiceId: string): void;
   getState(): Promise<PlaybackPosition>;
   on<E extends PlaybackEvent>(event: E, cb: PlaybackListener<E>): void;
+  off<E extends PlaybackEvent>(event: E, cb: PlaybackListener<E>): void;
 }

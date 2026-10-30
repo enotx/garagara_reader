@@ -21,6 +21,7 @@
     "@capawesome/capacitor-file-picker": "8.1.1",
     "@garagara/core": "workspace:^",
     "@garagara/lang-en": "workspace:^",
+    "@garagara/playback": "workspace:^",
     "@garagara/storage": "workspace:^",
     "capacitor-secure-storage-plugin": "0.13.0",
     "react": "^19.3.1",

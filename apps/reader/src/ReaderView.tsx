@@ -1,5 +1,11 @@
 import type { Locator, Note } from '@garagara/core';
-import type { BookSummary, ChapterSummary, StoredChapter } from '@garagara/storage';
+import type { PlaybackEngine, PlaybackStatus } from '@garagara/playback';
+import type {
+  BookSummary,
+  ChapterSummary,
+  PlayableSentence,
+  StoredChapter,
+} from '@garagara/storage';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ChapterView } from './ChapterView.js';
@@ -9,6 +15,7 @@ import {
   focusPositions,
   initialFocusPosition,
   positionForSentence,
+  sameFocus,
   sentenceIdForSegment,
   stepFocus,
   toFocusTarget,
@@ -18,7 +25,7 @@ import {
 import { FocusSubtitle } from './FocusSubtitle.js';
 import { createGestureState, reduceGesture, type GestureEvent } from './gestures.js';
 import { outlineRects, rangeForBlockOffsets, type OutlineRect } from './highlight.js';
-import { IconChevronLeft, IconChevronRight, IconPlay, IconX } from './icons';
+import { IconChevronLeft, IconChevronRight, IconPause, IconPlay, IconX } from './icons';
 import { buildPageMap, pageIndexForLocator, type PageInfo } from './page-map.js';
 import { hitTestPoint, type HitTestResult } from './hit-test.js';
 import { collectPageFragments } from './page-map-dom.js';
@@ -71,6 +78,7 @@ export function ReaderView({
   theme,
   llm,
   initialLocator,
+  playback,
   onThemeChange,
   onChapterChange,
   onExit,
@@ -84,6 +92,13 @@ export function ReaderView({
   theme: Theme;
   llm?: LlmRuntime;
   initialLocator?: Locator;
+  playback?: {
+    engine: PlaybackEngine;
+    status: PlaybackStatus;
+    sentence?: PlayableSentence;
+    browsing: boolean;
+    onBrowsingChange: (browsing: boolean) => void;
+  };
   onThemeChange: (theme: Theme) => void;
   onChapterChange: (chapterIndex: number) => void;
   onExit: () => void;
@@ -118,6 +133,7 @@ export function ReaderView({
   const [focusOutlines, setFocusOutlines] = useState<OutlineRect[]>([]);
   const longPressTimer = useRef<number | null>(null);
   const longPressFired = useRef(false);
+  const resumeAfterCard = useRef(false);
 
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -344,7 +360,7 @@ export function ReaderView({
   }, [focusEnabled, focusOrder, focusTarget]);
 
   useEffect(() => {
-    if (!focusEnabled || !focusTarget) {
+    if (!focusEnabled || !focusTarget || playback?.browsing) {
       return;
     }
     const index = findFocusIndex(focusOrder, focusTarget);
@@ -355,7 +371,64 @@ export function ReaderView({
     if (targetPage !== undefined && targetPage !== pageRef.current) {
       setPage(targetPage);
     }
-  }, [focusEnabled, focusTarget, focusOrder]);
+  }, [focusEnabled, focusTarget, focusOrder, playback?.browsing]);
+
+  useEffect(() => {
+    if (!playback || playback.status === 'idle' || !playback.sentence || playback.browsing) {
+      return;
+    }
+    if (playback.sentence.locator.chapterIndex !== chapter.index) {
+      return;
+    }
+    if (!focusEnabled) {
+      setFocusEnabled(true);
+      setGesture(createGestureState());
+    }
+    const position = positionForSentence(focusOrder, playback.sentence.id);
+    if (!position) {
+      return;
+    }
+    const target = toFocusTarget(position.segment);
+    setFocusTarget((current) => (sameFocus(current, target) ? current : target));
+  }, [
+    playback?.status,
+    playback?.sentence?.id,
+    playback?.browsing,
+    chapter.index,
+    focusEnabled,
+    focusOrder,
+  ]);
+
+  useEffect(() => {
+    const engine = playback?.engine;
+    if (!engine) {
+      return;
+    }
+    const onBoundary = (event: { sentenceId: string; start: number; end: number }): void => {
+      if (playback?.browsing) {
+        return;
+      }
+      const sentence = chapter.sentences.find((item) => item.id === event.sentenceId);
+      if (!sentence) {
+        return;
+      }
+      const offset = sentence.start + event.start;
+      const targetPage = pageMap.find((item) =>
+        item.segments.some(
+          (segment) =>
+            segment.kind === 'sentence' &&
+            segment.id === event.sentenceId &&
+            offset >= segment.start &&
+            offset < segment.end,
+        ),
+      )?.index;
+      if (targetPage !== undefined) {
+        setPage((current) => (current === targetPage ? current : targetPage));
+      }
+    };
+    engine.on('boundary', onBoundary);
+    return () => engine.off('boundary', onBoundary);
+  }, [playback?.engine, playback?.browsing, chapter.sentences, pageMap]);
 
   useEffect(() => {
     if (typeof CSS === 'undefined' || !CSS.highlights) {
@@ -477,6 +550,76 @@ export function ReaderView({
     setFocusTarget(first ? toFocusTarget(first.segment) : null);
   }
 
+  function locatorForFocus(): Locator | undefined {
+    if (focusTarget) {
+      const block = chapter.blocks.find((item) => item.id === focusTarget.blockId);
+      if (block) {
+        return {
+          bookId: book.id,
+          chapterIndex: chapter.index,
+          blockIndex: block.index,
+          offset: focusTarget.start,
+        };
+      }
+    }
+    return pageMap[page]?.startLocator;
+  }
+
+  function playFromSentence(sentenceId: string): void {
+    const engine = playback?.engine;
+    const sentence = chapter.sentences.find((item) => item.id === sentenceId);
+    const block = sentence
+      ? chapter.blocks.find((item) => item.id === sentence.blockId)
+      : undefined;
+    if (!engine || !sentence || !block) {
+      moveFocusToSentence(sentenceId);
+      return;
+    }
+    playback.onBrowsingChange(false);
+    if (!focusEnabled) {
+      setFocusMode(true);
+    }
+    void engine.play({
+      bookId: book.id,
+      chapterIndex: chapter.index,
+      blockIndex: block.index,
+      offset: sentence.start,
+    });
+  }
+
+  function togglePlayback(): void {
+    const engine = playback?.engine;
+    if (!engine) {
+      return;
+    }
+    if (playback.status === 'playing') {
+      engine.pause();
+      return;
+    }
+    if (playback.status === 'paused') {
+      engine.resume();
+      return;
+    }
+    const locator = locatorForFocus();
+    if (!locator) {
+      return;
+    }
+    playback.onBrowsingChange(false);
+    if (!focusEnabled) {
+      setFocusMode(true);
+    }
+    void engine.play(locator);
+  }
+
+  function closeCard(): void {
+    setCard(null);
+    setHit(null);
+    if (resumeAfterCard.current) {
+      resumeAfterCard.current = false;
+      playback?.engine.resume();
+    }
+  }
+
   function adjustFont(delta: number): void {
     pendingAnchor.current = captureVisibleAnchor() ?? pendingAnchor.current;
     setFontScale((value) => {
@@ -491,6 +634,9 @@ export function ReaderView({
   }
 
   function previousPage(): void {
+    if (playback?.status === 'playing') {
+      playback.onBrowsingChange(true);
+    }
     if (page > 0) {
       const targetPage = page - 1;
       setPage(targetPage);
@@ -505,6 +651,9 @@ export function ReaderView({
   }
 
   function nextPage(): void {
+    if (playback?.status === 'playing') {
+      playback.onBrowsingChange(true);
+    }
     if (page < pageCount - 1) {
       const targetPage = page + 1;
       setPage(targetPage);
@@ -536,6 +685,12 @@ export function ReaderView({
       if (!result?.sentenceId) {
         return;
       }
+      if (playback?.status === 'playing') {
+        longPressFired.current = true;
+        playFromSentence(result.sentenceId);
+        setGesture(createGestureState());
+        return;
+      }
       if (focusEnabled) {
         longPressFired.current = true;
         moveFocusToSentence(result.sentenceId);
@@ -565,7 +720,10 @@ export function ReaderView({
   }
 
   function applyGesture(event: GestureEvent): void {
-    const result = reduceGesture(gesture, event, { focus: focusEnabled });
+    const result = reduceGesture(gesture, event, {
+      focus: focusEnabled,
+      playing: playback?.status === 'playing',
+    });
     setGesture(result.state);
     for (const command of result.commands) {
       if (command.type === 'turnPage') {
@@ -575,12 +733,23 @@ export function ReaderView({
           previousPage();
         }
       } else if (command.type === 'closeCard') {
-        setCard(null);
-        setHit(null);
+        closeCard();
       } else if (command.type === 'advanceFocus') {
+        if (playback?.status === 'playing') {
+          playback.engine.next();
+        }
         moveFocus('next');
       } else if (command.type === 'focusSentence') {
         moveFocusToSentence(command.sentenceId);
+      } else if (command.type === 'playSentence') {
+        playFromSentence(command.sentenceId);
+      } else if (command.type === 'pausePlayback') {
+        if (playback?.status === 'playing') {
+          resumeAfterCard.current = true;
+          playback.engine.pause();
+        }
+      } else if (command.type === 'browsePlayback') {
+        playback?.onBrowsingChange(true);
       }
     }
   }
@@ -652,17 +821,22 @@ export function ReaderView({
       data-focus={focusEnabled ? 'true' : 'false'}
       data-focus-unit={focusUnit}
       data-focus-id={focusTarget?.id}
+      data-focus-block={focusTarget?.blockId}
+      data-focus-start={focusTarget?.start}
+      data-focus-end={focusTarget?.end}
       data-focus-next-count={nextSentenceTexts.length}
       data-page={page}
       data-page-count={pageCount}
+      data-playback-status={playback?.status ?? 'idle'}
+      data-playback-sentence={playback?.sentence?.id}
+      data-playback-browsing={playback?.browsing ? 'true' : 'false'}
     >
       <header
         className="reader-header"
         onClick={() => {
           if (translation || card || note) {
             setTranslation(null);
-            setCard(null);
-            setHit(null);
+            closeCard();
             setNote(null);
             setGesture(createGestureState());
             return;
@@ -902,8 +1076,7 @@ export function ReaderView({
           bookId={book.id}
           onOpenSettings={onOpenSettings}
           onClose={() => {
-            setCard(null);
-            setHit(null);
+            closeCard();
             setGesture(createGestureState());
           }}
         />
@@ -945,13 +1118,28 @@ export function ReaderView({
         </aside>
       ) : null}
 
+      {playback && playback.status !== 'idle' && playback.browsing ? (
+        <button
+          type="button"
+          className="playback-return"
+          data-playback-return
+          onClick={() => {
+            playback.onBrowsingChange(false);
+            if (playback.sentence) {
+              moveFocusToSentence(playback.sentence.id);
+            }
+          }}
+        >
+          回到当前句
+        </button>
+      ) : null}
+
       <footer
         className={`reader-footer${focusEnabled ? ' focus' : ''}`}
         onClick={() => {
           if (translation || card || note) {
             setTranslation(null);
-            setCard(null);
-            setHit(null);
+            closeCard();
             setNote(null);
             setGesture(createGestureState());
             return;
@@ -967,7 +1155,11 @@ export function ReaderView({
               aria-label="上一片段"
               onClick={(event) => {
                 event.stopPropagation();
-                moveFocus('prev');
+                if (playback?.status === 'playing') {
+                  playback.engine.prev();
+                } else {
+                  moveFocus('prev');
+                }
               }}
               disabled={focusIndex <= 0}
             >
@@ -991,14 +1183,28 @@ export function ReaderView({
               aria-label="下一片段"
               onClick={(event) => {
                 event.stopPropagation();
-                moveFocus('next');
+                if (playback?.status === 'playing') {
+                  playback.engine.next();
+                } else {
+                  moveFocus('next');
+                }
               }}
               disabled={focusIndex < 0 || focusIndex >= focusOrder.length - 1}
             >
               <IconChevronRight size={20} />
             </button>
-            <button type="button" className="reader-button" aria-label="播放（v0.2）" disabled>
-              <IconPlay size={18} />
+            <button
+              type="button"
+              className="reader-button"
+              aria-label={playback?.status === 'playing' ? '暂停播放' : '播放'}
+              data-playback-toggle
+              disabled={!playback}
+              onClick={(event) => {
+                event.stopPropagation();
+                togglePlayback();
+              }}
+            >
+              {playback?.status === 'playing' ? <IconPause size={18} /> : <IconPlay size={18} />}
             </button>
           </>
         ) : (

@@ -232,6 +232,22 @@ describe('WebSpeechPlaybackEngine', () => {
     });
   });
 
+  it('removes listeners when off is called', async () => {
+    const speech = new FakeSpeech();
+    const engine = createEngine([sentence(0, 'One.')], speech);
+    const starts: string[] = [];
+    const listener = (event: { sentenceId: string }): void => {
+      starts.push(event.sentenceId);
+    };
+
+    engine.on('sentenceStart', listener);
+    engine.off('sentenceStart', listener);
+    await engine.play(locator(0));
+    speech.utterances[0]?.start();
+
+    expect(starts).toEqual([]);
+  });
+
   it('reports speech errors and resets to idle', async () => {
     const speech = new FakeSpeech();
     const engine = createEngine([sentence(0, 'One.')], speech);

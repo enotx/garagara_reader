@@ -27,6 +27,9 @@ export type GestureCommand =
   | { type: 'translateSentence'; sentenceId: string }
   | { type: 'advanceFocus' }
   | { type: 'focusSentence'; sentenceId: string }
+  | { type: 'playSentence'; sentenceId: string }
+  | { type: 'pausePlayback' }
+  | { type: 'browsePlayback' }
   | { type: 'turnPage'; direction: 'next' | 'prev' };
 
 export interface GestureResult {
@@ -39,6 +42,8 @@ export interface GestureOptions {
   edgeTurn?: boolean;
   /** Routes the Focus column of Spec §11.2. */
   focus?: boolean;
+  /** Routes the playback column of Spec §11.2. */
+  playing?: boolean;
 }
 
 export function createGestureState(): GestureState {
@@ -58,8 +63,8 @@ function pageCommand(direction: 'next' | 'prev'): GestureCommand {
 }
 
 /**
- * Routes one gesture for the normal-reading, Focus and card-open columns of
- * Spec §11.2. Playback is added in v0.2.
+ * Routes one gesture for the normal-reading, Focus, playback and card-open
+ * columns of Spec §11.2.
  */
 export function reduceGesture(
   state: GestureState,
@@ -68,6 +73,7 @@ export function reduceGesture(
 ): GestureResult {
   const edgeTurn = options.edgeTurn === true;
   const focus = options.focus === true;
+  const playing = options.playing === true;
 
   if (event.type === 'swipe') {
     if (state.mode === 'card') {
@@ -75,7 +81,10 @@ export function reduceGesture(
     }
     return {
       state: { ...state, menuOpen: false },
-      commands: [pageCommand(event.direction === 'left' ? 'next' : 'prev')],
+      commands: [
+        pageCommand(event.direction === 'left' ? 'next' : 'prev'),
+        ...(playing ? [{ type: 'browsePlayback' } satisfies GestureCommand] : []),
+      ],
     };
   }
 
@@ -86,9 +95,11 @@ export function reduceGesture(
     return {
       state: { ...state, menuOpen: false },
       commands: [
-        focus
-          ? { type: 'focusSentence', sentenceId: event.sentenceId }
-          : { type: 'translateSentence', sentenceId: event.sentenceId },
+        playing
+          ? { type: 'playSentence', sentenceId: event.sentenceId }
+          : focus
+            ? { type: 'focusSentence', sentenceId: event.sentenceId }
+            : { type: 'translateSentence', sentenceId: event.sentenceId },
       ],
     };
   }
@@ -100,6 +111,12 @@ export function reduceGesture(
         commands: [{ type: 'replaceCard', word: event.word }],
       };
     }
+    if (playing && !event.sameSentence) {
+      return {
+        state: { ...state, menuOpen: false },
+        commands: [{ type: 'advanceFocus' }],
+      };
+    }
     if (focus && !event.sameSentence) {
       return {
         state: { ...state, menuOpen: false },
@@ -108,7 +125,9 @@ export function reduceGesture(
     }
     return {
       state: card(event.word),
-      commands: [{ type: 'openCard', word: event.word }],
+      commands: playing
+        ? [{ type: 'pausePlayback' }, { type: 'openCard', word: event.word }]
+        : [{ type: 'openCard', word: event.word }],
     };
   }
 
@@ -134,12 +153,18 @@ export function reduceGesture(
     }
     return {
       state: { ...state, menuOpen: false },
-      commands: [pageCommand(event.side === 'right' ? 'next' : 'prev')],
+      commands: [
+        pageCommand(event.side === 'right' ? 'next' : 'prev'),
+        ...(playing ? [{ type: 'browsePlayback' } satisfies GestureCommand] : []),
+      ],
     };
   }
 
   if (state.mode === 'card') {
     return { state: reading(), commands: [{ type: 'closeCard' }] };
+  }
+  if (playing) {
+    return { state, commands: [] };
   }
   if (focus) {
     return {

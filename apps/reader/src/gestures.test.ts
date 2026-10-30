@@ -106,6 +106,41 @@ describe('gesture state machine', () => {
     ]);
   });
 
+  it('covers the playback column', () => {
+    const playing = { playing: true, focus: true } as const;
+
+    expect(run(word('here'), playing)).toEqual({
+      state: { mode: 'card', menuOpen: false, cardWord: 'here' },
+      commands: [{ type: 'pausePlayback' }, { type: 'openCard', word: 'here' }],
+    });
+
+    expect(
+      run(
+        { type: 'tap', target: 'word', word: 'next', sentenceId: 's2', sameSentence: false },
+        playing,
+      ).commands,
+    ).toEqual([{ type: 'advanceFocus' }]);
+
+    expect(run({ type: 'tap', target: 'blank' }, playing)).toEqual({
+      state: { mode: 'reading', menuOpen: false },
+      commands: [],
+    });
+
+    expect(run({ type: 'tap', target: 'chrome' }, playing).commands).toEqual([
+      { type: 'toggleMenu' },
+    ]);
+    expect(run({ type: 'longPress', sentenceId: 's3' }, playing).commands).toEqual([
+      { type: 'playSentence', sentenceId: 's3' },
+    ]);
+    expect(run({ type: 'swipe', direction: 'left' }, playing).commands).toEqual([
+      { type: 'turnPage', direction: 'next' },
+      { type: 'browsePlayback' },
+    ]);
+    expect(
+      run({ type: 'tap', target: 'edge', side: 'right' }, { ...playing, edgeTurn: true }).commands,
+    ).toEqual([{ type: 'turnPage', direction: 'next' }, { type: 'browsePlayback' }]);
+  });
+
   it('closes a menu before opening a card', () => {
     const menu = reduceGesture(createGestureState(), { type: 'tap', target: 'blank' });
     const result = reduceGesture(menu.state, word('apple'));

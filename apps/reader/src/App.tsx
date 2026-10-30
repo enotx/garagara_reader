@@ -1,5 +1,13 @@
 import { importBook, type Locator, type Note } from '@garagara/core';
-import type { BookSummary, ChapterSummary, SqliteAdapter, StoredChapter } from '@garagara/storage';
+import type { PlaybackStatus } from '@garagara/playback';
+import { WebSpeechPlaybackEngine } from '@garagara/playback';
+import type {
+  BookSummary,
+  ChapterSummary,
+  PlayableSentence,
+  SqliteAdapter,
+  StoredChapter,
+} from '@garagara/storage';
 import {
   getChapter,
   importBookToStorage,
@@ -7,6 +15,7 @@ import {
   listChapterCharCounts,
   listChapters,
   listNotes,
+  listPlayableSentences,
 } from '@garagara/storage';
 import { Capacitor } from '@capacitor/core';
 import { useEffect, useRef, useState } from 'react';
@@ -113,6 +122,12 @@ export function App() {
   const [view, setView] = useState<AppView>('library');
   const [initialLocator, setInitialLocator] = useState<Locator | undefined>();
   const [readerSession, setReaderSession] = useState(0);
+  const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>('idle');
+  const [playbackSentence, setPlaybackSentence] = useState<PlayableSentence | undefined>();
+  const [playbackBrowsing, setPlaybackBrowsing] = useState(false);
+  const playbackEngineRef = useRef<WebSpeechPlaybackEngine | undefined>(undefined);
+  const playbackBrowsingRef = useRef(false);
+  const chapterIndexRef = useRef<number | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -241,23 +256,99 @@ export function App() {
     };
   }, []);
 
+  function disposePlayback(): void {
+    const engine = playbackEngineRef.current;
+    playbackEngineRef.current = undefined;
+    playbackBrowsingRef.current = false;
+    chapterIndexRef.current = undefined;
+    engine?.stop();
+    setPlaybackStatus('idle');
+    setPlaybackSentence(undefined);
+    setPlaybackBrowsing(false);
+  }
+
+  async function loadChapterAt(
+    book: BookSummary,
+    chapterIndex: number,
+    locator?: Locator,
+  ): Promise<void> {
+    const adapter = await openDatabase();
+    chapterIndexRef.current = chapterIndex;
+    setInitialLocator(locator);
+    setChapter(await getChapter(adapter, book.id, chapterIndex));
+  }
+
+  function installPlayback(book: BookSummary, queue: readonly PlayableSentence[]): void {
+    const previous = playbackEngineRef.current;
+    playbackEngineRef.current = undefined;
+    previous?.stop();
+    playbackBrowsingRef.current = false;
+    setPlaybackBrowsing(false);
+    setPlaybackSentence(undefined);
+    setPlaybackStatus('idle');
+    if (queue.length === 0) {
+      return;
+    }
+
+    const engine = new WebSpeechPlaybackEngine({
+      source: { load: async () => queue },
+    });
+    engine.on('sentenceStart', ({ sentenceId }) => {
+      const sentence = queue.find((item) => item.id === sentenceId);
+      if (!sentence) {
+        return;
+      }
+      setPlaybackSentence(sentence);
+      if (
+        !playbackBrowsingRef.current &&
+        chapterIndexRef.current !== sentence.locator.chapterIndex
+      ) {
+        void loadChapterAt(book, sentence.locator.chapterIndex, sentence.locator);
+      }
+    });
+    engine.on('stateChange', (state) => {
+      setPlaybackStatus(state.status);
+    });
+    engine.on('ended', () => {
+      playbackBrowsingRef.current = false;
+      setPlaybackBrowsing(false);
+      setPlaybackStatus('idle');
+    });
+    playbackEngineRef.current = engine;
+  }
+
+  function changePlaybackBrowsing(value: boolean): void {
+    playbackBrowsingRef.current = value;
+    setPlaybackBrowsing(value);
+    if (!value && selected) {
+      const sentence = playbackSentence;
+      if (sentence && chapterIndexRef.current !== sentence.locator.chapterIndex) {
+        void loadChapterAt(selected, sentence.locator.chapterIndex, sentence.locator);
+      }
+    }
+  }
+
   async function openBook(book: BookSummary, locator?: Locator): Promise<void> {
     setBusy(true);
     setSheetBook(null);
     setView('library');
     setInitialLocator(locator);
     setReaderSession((value) => value + 1);
+    disposePlayback();
     try {
       const adapter = await openDatabase();
       const rows = await listChapters(adapter, book.id);
       const sizes = await listChapterCharCounts(adapter, book.id);
       const noteRows = await listNotes(adapter, book.id);
+      const queue = await listPlayableSentences(adapter, book.id);
       setSelected(book);
       setChapters(rows);
       setChapterSizes(sizes);
       setNotes(noteRows);
       const first = rows[0];
+      chapterIndexRef.current = first?.index;
       setChapter(first ? await getChapter(adapter, book.id, first.index) : undefined);
+      installPlayback(book, queue);
       setStatus('');
     } catch (error) {
       setStatus(`读取失败：${String(error)}`);
@@ -270,12 +361,11 @@ export function App() {
     if (!selected) {
       return;
     }
-    const adapter = await openDatabase();
-    setInitialLocator(undefined);
-    setChapter(await getChapter(adapter, selected.id, chapterIndex));
+    await loadChapterAt(selected, chapterIndex);
   }
 
   function selectTab(tab: AppView): void {
+    disposePlayback();
     setView(tab);
     setSelected(undefined);
     setChapter(undefined);
@@ -328,15 +418,30 @@ export function App() {
         theme={theme}
         {...(adapter ? { llm: { adapter, settings: llmSettings, apiKey } } : {})}
         {...(initialLocator ? { initialLocator } : {})}
+        {...(playbackEngineRef.current
+          ? {
+              playback: {
+                engine: playbackEngineRef.current,
+                status: playbackStatus,
+                ...(playbackSentence ? { sentence: playbackSentence } : {}),
+                browsing: playbackBrowsing,
+                onBrowsingChange: changePlaybackBrowsing,
+              },
+            }
+          : {})}
         onThemeChange={setTheme}
         onChapterChange={(chapterIndex) => void openChapter(chapterIndex)}
         onExit={() => {
+          disposePlayback();
           setSelected(undefined);
           setChapter(undefined);
           setNotes([]);
           setInitialLocator(undefined);
         }}
-        onOpenSettings={() => setView('settings')}
+        onOpenSettings={() => {
+          playbackEngineRef.current?.pause();
+          setView('settings');
+        }}
       />
     );
   }

@@ -211,9 +211,10 @@ interface PlaybackEngine {
   on(event: 'sentenceStart', cb: (e: { sentenceId: string }) => void): void;
   on(event: 'boundary', cb: (e: { sentenceId: string; start: number; end: number }) => void): void;
   on(event: 'stateChange' | 'ended', cb: (e: unknown) => void): void;
+  off(event: 'sentenceStart' | 'boundary' | 'stateChange' | 'ended', cb: (e: unknown) => void): void;
 }
 ```
-原生层直接从 sentences 表读取播放队列，可以跨章节播放。Web 层只负责显示：收到 boundary 事件时，如果读到的位置超出当前页，就翻页。App 回到前台时调用 getState() 对齐位置。Web 实现是行为基准。
+原生层直接从 sentences 表读取播放队列，可以跨章节播放。Web 层只负责显示：收到 boundary 事件时，如果读到的位置超出当前页，就翻页。用户播放中手动翻页会暂停自动跟随，语音继续播放，直到点“回到当前句”。App 回到前台时调用 getState() 对齐位置。Web 实现是行为基准。
 三档 TTS（系统 / 云端 / 端侧）都实现同一个"按句合成"接口。
 
 ## 14. 设置默认值
