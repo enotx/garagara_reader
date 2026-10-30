@@ -6,6 +6,7 @@
 export const LLM_PROMPT_VERSIONS = {
   wordInContext: 'wordInContext/v1',
   translateSentence: 'translateSentence/v1',
+  batchPreprocess: 'batchPreprocess/v1',
 } as const;
 
 export type LlmTask = keyof typeof LLM_PROMPT_VERSIONS;

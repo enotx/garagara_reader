@@ -27,3 +27,12 @@ export {
   type TranslateSentenceInput,
   type TranslateSentenceResult,
 } from './translate-sentence.js';
+export {
+  buildBatchPreprocessMessages,
+  parseBatchPreprocessResult,
+  type BatchPreprocessInput,
+  type BatchPreprocessItem,
+  type BatchPreprocessPhrase,
+  type BatchPreprocessResult,
+  type BatchPreprocessSentence,
+} from './batch-preprocess.js';
