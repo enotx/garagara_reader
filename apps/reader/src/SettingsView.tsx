@@ -8,6 +8,7 @@ import {
   isLlmConfigured,
   writeLlmSettings,
   type DefinitionStrategy,
+  type PreprocessPolicy,
   type ReaderLlmSettings,
 } from './settings.js';
 
@@ -40,6 +41,28 @@ const STRATEGIES: Array<{
   },
 ];
 
+const PREPROCESS_POLICIES: Array<{
+  value: PreprocessPolicy;
+  title: string;
+  description: string;
+}> = [
+  {
+    value: 'off',
+    title: '关闭',
+    description: '只在需要时请求 AI，不做后台预处理。',
+  },
+  {
+    value: 'wifi',
+    title: '仅 Wi-Fi',
+    description: '在 Wi-Fi 下预取当前章之后的内容，蜂窝网络不请求。',
+  },
+  {
+    value: 'always',
+    title: '总是',
+    description: '只要联网就预取，可能使用蜂窝数据。',
+  },
+];
+
 function reasonFor(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -67,10 +90,19 @@ export function SettingsView({
   const [keyDraft, setKeyDraft] = useState(apiKey);
   const [strategy, setStrategy] = useState<DefinitionStrategy>(settings.strategy);
   const [autoRequest, setAutoRequest] = useState(settings.autoRequest);
+  const [preprocess, setPreprocess] = useState<PreprocessPolicy>(settings.preprocess);
+  const [preprocessChapters, setPreprocessChapters] = useState(settings.preprocessChapters);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ state: 'idle' });
   const [testStatus, setTestStatus] = useState<TestStatus>({ state: 'idle' });
 
-  const draft: ReaderLlmSettings = { baseURL, model, strategy, autoRequest };
+  const draft: ReaderLlmSettings = {
+    baseURL,
+    model,
+    strategy,
+    autoRequest,
+    preprocess,
+    preprocessChapters,
+  };
 
   async function save(): Promise<void> {
     if (!adapter) {
@@ -278,6 +310,65 @@ export function SettingsView({
           </label>
         </section>
 
+        <section className="settings-group" aria-labelledby="settings-preprocess-title">
+          <header className="settings-group-head">
+            <div>
+              <h2 id="settings-preprocess-title">预处理</h2>
+              <p>播放和阅读时，提前翻译后面的句子并整理短语与生词。</p>
+            </div>
+          </header>
+
+          <div
+            className="settings-options"
+            role="radiogroup"
+            aria-labelledby="settings-preprocess-title"
+          >
+            {PREPROCESS_POLICIES.map((item) => (
+              <label
+                key={item.value}
+                className={`settings-option${preprocess === item.value ? ' is-selected' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="preprocess-policy"
+                  value={item.value}
+                  checked={preprocess === item.value}
+                  onChange={() => {
+                    setPreprocess(item.value);
+                    setSaveStatus({ state: 'idle' });
+                  }}
+                />
+                <span className="settings-option-copy">
+                  <strong>{item.title}</strong>
+                  <span>{item.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <label className="settings-field">
+            <span className="settings-label">
+              往后预处理的章数
+              <small>当前章之后，默认 1 章</small>
+            </span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              value={preprocessChapters}
+              disabled={preprocess === 'off'}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isInteger(value) && value >= 0) {
+                  setPreprocessChapters(value);
+                  setSaveStatus({ state: 'idle' });
+                }
+              }}
+            />
+          </label>
+        </section>
+
         <section className="settings-group settings-privacy" aria-label="隐私说明">
           <h2>隐私</h2>
           <p>
@@ -295,6 +386,8 @@ export function SettingsView({
               setModel(DEFAULT_LLM_SETTINGS.model);
               setStrategy(DEFAULT_LLM_SETTINGS.strategy);
               setAutoRequest(DEFAULT_LLM_SETTINGS.autoRequest);
+              setPreprocess(DEFAULT_LLM_SETTINGS.preprocess);
+              setPreprocessChapters(DEFAULT_LLM_SETTINGS.preprocessChapters);
               setSaveStatus({ state: 'idle' });
             }}
           >
