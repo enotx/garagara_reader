@@ -31,12 +31,18 @@ import {
   IconX,
 } from './icons';
 import { openDatabase } from './database.js';
+import { devLlmEnvFromEnv } from './dev-env.js';
 import { pickBookFile, readSharedBook } from './files.js';
 import { ReaderView } from './ReaderView';
 import { readApiKey, writeApiKey } from './secrets.js';
 import { SettingsView } from './SettingsView';
 import { VocabView } from './VocabView';
-import { DEFAULT_LLM_SETTINGS, readLlmSettings, type ReaderLlmSettings } from './settings.js';
+import {
+  DEFAULT_LLM_SETTINGS,
+  isLlmConfigured,
+  readLlmSettings,
+  type ReaderLlmSettings,
+} from './settings.js';
 import { applyTheme, readTheme } from './theme';
 
 function coverTone(id: string): number {
@@ -144,10 +150,14 @@ export function App() {
         if (!active) {
           return;
         }
+        const env = devLlmEnvFromEnv(import.meta.env);
+        const seededSettings = isLlmConfigured(settings)
+          ? settings
+          : { ...settings, ...env.settings };
         setAdapter(database);
         setBooks(rows);
-        setLlmSettings(settings);
-        setApiKey(storedKey);
+        setLlmSettings(seededSettings);
+        setApiKey(storedKey || env.apiKey);
         setStatus('');
       })
       .catch((error: unknown) => {

@@ -22,6 +22,7 @@ prepareWaSqlite();
 
 export default defineConfig({
   plugins: [react()],
+  envDir: '../..',
   resolve: {
     alias: [
       {

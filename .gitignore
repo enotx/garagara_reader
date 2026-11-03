@@ -6,6 +6,9 @@ coverage/
 .vite/
 playwright-report/
 test-results/
+.env
+.env.*
+!.env.example
 
 # Generated wa-sqlite assets
 apps/reader/public/wa-sqlite/
