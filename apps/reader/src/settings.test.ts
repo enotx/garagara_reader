@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LLM_SETTINGS,
   allowsPreprocess,
+  apiKeyUpdateFor,
   isLlmConfigured,
   normalizeLlmSettings,
 } from './settings.js';
@@ -29,6 +30,8 @@ describe('LLM settings', () => {
         autoRequest: false,
         preprocess: 'always',
         preprocessChapters: 3,
+        uiLanguage: 'en',
+        explainLanguage: 'ja',
       }),
     ).toEqual({
       baseURL: 'https://api.example.com/v1',
@@ -37,7 +40,15 @@ describe('LLM settings', () => {
       autoRequest: false,
       preprocess: 'always',
       preprocessChapters: 3,
+      uiLanguage: 'en',
+      explainLanguage: 'ja',
     });
+  });
+
+  it('rejects unsupported UI or explanation languages', () => {
+    expect(
+      normalizeLlmSettings({ uiLanguage: 'fr', explainLanguage: 'ko' }),
+    ).toMatchObject({ uiLanguage: 'zh', explainLanguage: 'zh' });
   });
 
   it('rejects invalid preprocessing values', () => {
@@ -75,5 +86,12 @@ describe('LLM settings', () => {
         model: 'test-model',
       }),
     ).toBe(true);
+  });
+
+  it('leaves the stored API key untouched when the field was not edited', () => {
+    expect(apiKeyUpdateFor(false, '')).toBeUndefined();
+    expect(apiKeyUpdateFor(false, 'stale-draft')).toBeUndefined();
+    expect(apiKeyUpdateFor(true, '')).toBe('');
+    expect(apiKeyUpdateFor(true, 'sk-new')).toBe('sk-new');
   });
 });

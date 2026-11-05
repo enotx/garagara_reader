@@ -120,3 +120,26 @@ test('prefetches three upcoming sentence translations in Focus', async ({ page }
   await page.getByRole('button', { name: '下一片段' }).click();
   await expect.poll(() => mock.calls()).toBe(5);
 });
+
+test('returns to the previous focus unit from the top-left zone', async ({ page }) => {
+  await page.goto('/');
+  await openFocusBook(
+    page,
+    'One warm sentence. Two warm sentences. Three warm sentences. Four warm sentences.',
+  );
+  await enableFocus(page);
+
+  const reader = page.locator('.reader');
+  const firstFocus = await reader.getAttribute('data-focus-id');
+  await page.getByRole('button', { name: '下一片段' }).click();
+  await expect(reader).not.toHaveAttribute('data-focus-id', firstFocus ?? '');
+
+  const viewport = page.locator('.reader-viewport');
+  const box = await viewport.boundingBox();
+  expect(box).not.toBeNull();
+  if (box) {
+    await page.mouse.click(box.x + 20, box.y + 20);
+  }
+
+  await expect(reader).toHaveAttribute('data-focus-id', firstFocus ?? '');
+});

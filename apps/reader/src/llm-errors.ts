@@ -1,21 +1,29 @@
 import { LlmError } from '@garagara/llm';
 
-/** Maps provider failures to short Chinese messages for the reader UI. */
-export function describeLlmError(error: unknown): string {
+import { translate, type AppLanguage } from './i18n.js';
+
+/** Maps provider failures to short localized messages for the reader UI. */
+export function describeLlmError(error: unknown, language: AppLanguage): string {
   if (error instanceof LlmError) {
     if (error.kind === 'timeout') {
-      return '请求超时，请重试。';
+      return translate(language, 'error.timeout');
     }
     if (error.kind === 'network') {
-      return '网络不可用，请检查连接后重试。';
+      return translate(language, 'error.network');
     }
     if (error.kind === 'http' && (error.status === 401 || error.status === 403)) {
-      return 'API Key 或服务地址无效。';
+      return translate(language, 'error.config');
     }
     if (error.kind === 'invalid_response') {
-      return 'AI 返回的内容格式不正确，可以重试。';
+      return translate(language, 'error.invalidResponse');
+    }
+    if (error.kind === 'config') {
+      return translate(language, 'error.config');
+    }
+    if (error.kind === 'http') {
+      return translate(language, 'error.generic');
     }
     return error.message;
   }
-  return error instanceof Error ? error.message : '请求失败，请重试。';
+  return error instanceof Error ? error.message : translate(language, 'error.generic');
 }

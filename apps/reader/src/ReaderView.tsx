@@ -10,10 +10,17 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ChapterView } from './ChapterView.js';
 import {
+  EDGE_TURN_GUTTER,
+  readEdgeTurnPreference,
+  resolveEdgeTurn,
+  writeEdgeTurnPreference,
+} from './edge-turn.js';
+import {
   findFocusIndex,
   firstSegmentOnPage,
   focusPositions,
   initialFocusPosition,
+  isFocusBackPoint,
   positionForSentence,
   sameFocus,
   sentenceIdForSegment,
@@ -27,6 +34,7 @@ import { createGestureState, reduceGesture, type GestureEvent } from './gestures
 import { outlineRects, rangeForBlockOffsets, type OutlineRect } from './highlight.js';
 import { IconChevronLeft, IconChevronRight, IconPause, IconPlay, IconX } from './icons';
 import { buildPageMap, pageIndexForLocator, type PageInfo } from './page-map.js';
+import { translator, type AppLanguage, type MessageKey } from './i18n.js';
 import { hitTestPoint, type HitTestResult } from './hit-test.js';
 import { collectPageFragments } from './page-map-dom.js';
 import type { LlmRuntime } from './llm.js';
@@ -39,6 +47,13 @@ const FONT_SCALE_KEY = 'garagara.reader.fontScale';
 const FOCUS_UNIT_KEY = 'garagara.reader.focusUnit';
 const MIN_FONT_SCALE = 70;
 const MAX_FONT_SCALE = 180;
+
+const THEME_KEYS: Record<Theme, MessageKey> = {
+  light: 'theme.light',
+  dark: 'theme.dark',
+  sepia: 'theme.sepia',
+  eink: 'theme.eink',
+};
 
 interface Anchor {
   blockId: string;
@@ -76,10 +91,12 @@ export function ReaderView({
   chapterSizes,
   notes,
   theme,
+  language,
   llm,
   initialLocator,
   playback,
   onThemeChange,
+  onProgress,
   onChapterChange,
   onExit,
   onOpenSettings,
@@ -90,6 +107,7 @@ export function ReaderView({
   chapterSizes: number[];
   notes: Note[];
   theme: Theme;
+  language: AppLanguage;
   llm?: LlmRuntime;
   initialLocator?: Locator;
   playback?: {
@@ -100,10 +118,12 @@ export function ReaderView({
     onBrowsingChange: (browsing: boolean) => void;
   };
   onThemeChange: (theme: Theme) => void;
+  onProgress?: (locator: Locator) => void;
   onChapterChange: (chapterIndex: number) => void;
   onExit: () => void;
   onOpenSettings: () => void;
 }) {
+  const t = translator(language);
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
@@ -114,6 +134,8 @@ export function ReaderView({
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
   const [fontScale, setFontScale] = useState(initialFontScale);
+  const [edgeTurnPreference, setEdgeTurnPreference] = useState(readEdgeTurnPreference);
+  const edgeTurn = resolveEdgeTurn(edgeTurnPreference, theme);
   const [fontsReady, setFontsReady] = useState(false);
   const [pageMap, setPageMap] = useState<PageInfo[]>([]);
   const [gesture, setGesture] = useState(createGestureState);
@@ -134,6 +156,7 @@ export function ReaderView({
   const longPressTimer = useRef<number | null>(null);
   const longPressFired = useRef(false);
   const resumeAfterCard = useRef(false);
+  const latestLocator = useRef<Locator | undefined>(undefined);
 
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -265,9 +288,14 @@ export function ReaderView({
     }
     const update = (): void => {
       const rect = viewport.getBoundingClientRect();
+      const style = getComputedStyle(viewport);
+      const horizontalPadding =
+        Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+      const verticalPadding =
+        Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
       const next = {
-        width: Math.max(1, Math.floor(rect.width)),
-        height: Math.max(1, Math.floor(rect.height)),
+        width: Math.max(1, Math.floor(rect.width - horizontalPadding)),
+        height: Math.max(1, Math.floor(rect.height - verticalPadding)),
       };
       const previous = sizeRef.current;
       if (
@@ -338,6 +366,23 @@ export function ReaderView({
     });
     return () => cancelAnimationFrame(frame);
   }, [chapter, size.width, size.height, fontScale, fontsReady]);
+
+  useEffect(() => {
+    const locator = pageMap[page]?.startLocator;
+    if (!locator) {
+      return;
+    }
+    latestLocator.current = locator;
+    onProgress?.(locator);
+  }, [pageMap, page, onProgress]);
+
+  useEffect(() => {
+    return () => {
+      if (latestLocator.current) {
+        onProgress?.(latestLocator.current);
+      }
+    };
+  }, [onProgress]);
 
   useEffect(() => {
     if (!focusEnabled) {
@@ -723,6 +768,7 @@ export function ReaderView({
     const result = reduceGesture(gesture, event, {
       focus: focusEnabled,
       playing: playback?.status === 'playing',
+      edgeTurn,
     });
     setGesture(result.state);
     for (const command of result.commands) {
@@ -847,7 +893,7 @@ export function ReaderView({
         <button
           type="button"
           className="reader-button reader-back"
-          aria-label="返回书架"
+          aria-label={t('reader.backToLibrary')}
           onClick={(event) => {
             event.stopPropagation();
             onExit();
@@ -870,38 +916,38 @@ export function ReaderView({
             <button
               type="button"
               className="reader-button"
-              aria-label="关闭菜单"
+              aria-label={t('reader.closeMenu')}
               onClick={() => applyGesture({ type: 'tap', target: 'chrome' })}
             >
               <IconX size={18} />
             </button>
             <div className="menu-title">
-              <span>阅读设置</span>
+              <span>{t('reader.menuTitle')}</span>
               <strong>{chapter.title}</strong>
             </div>
           </div>
           <div className="menu-settings-row">
             <label className="menu-field">
-              <span className="menu-field-label">主题</span>
+              <span className="menu-field-label">{t('reader.theme')}</span>
               <select
                 className="theme-select"
                 value={theme}
-                aria-label="主题"
+                aria-label={t('reader.theme')}
                 onChange={(event) => onThemeChange(event.target.value as Theme)}
               >
                 {THEMES.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
+                  <option key={item} value={item}>
+                    {t(THEME_KEYS[item])}
                   </option>
                 ))}
               </select>
             </label>
             <label className="menu-field">
-              <span className="menu-field-label">章节</span>
+              <span className="menu-field-label">{t('reader.chapter')}</span>
               <select
                 className="chapter-select"
                 value={chapter.index}
-                aria-label="选择章节"
+                aria-label={t('reader.selectChapter')}
                 onChange={(event) => onChapterChange(Number(event.target.value))}
               >
                 {chapters.map((item) => (
@@ -926,6 +972,11 @@ export function ReaderView({
         data-hit-offset={hit?.blockOffset}
         data-hit-start={hit?.token.start}
         data-hit-end={hit?.token.end}
+        data-edge-turn={edgeTurn ? 'true' : 'false'}
+        style={{
+          paddingLeft: edgeTurn ? EDGE_TURN_GUTTER : 0,
+          paddingRight: edgeTurn ? EDGE_TURN_GUTTER : 0,
+        }}
         onPointerDown={(event) => {
           pointerStart.current = { x: event.clientX, y: event.clientY };
           longPressFired.current = false;
@@ -988,6 +1039,45 @@ export function ReaderView({
                 return;
               }
             }
+            if (
+              focusEnabled &&
+              playback?.status !== 'playing' &&
+              !card &&
+              !note &&
+              viewportRef.current &&
+              isFocusBackPoint(
+                { x: event.clientX, y: event.clientY },
+                viewportRef.current.getBoundingClientRect(),
+              )
+            ) {
+              setHit(null);
+              moveFocus('prev');
+              setGesture(createGestureState());
+              return;
+            }
+            if (edgeTurn) {
+              const bounds = viewportRef.current?.getBoundingClientRect();
+              if (bounds) {
+                const side =
+                  event.clientX <= bounds.left + EDGE_TURN_GUTTER
+                    ? 'left'
+                    : event.clientX >= bounds.right - EDGE_TURN_GUTTER
+                      ? 'right'
+                      : undefined;
+                if (side) {
+                  if (card || note) {
+                    setCard(null);
+                    setHit(null);
+                    setNote(null);
+                    setGesture(createGestureState());
+                    return;
+                  }
+                  setHit(null);
+                  applyGesture({ type: 'tap', target: 'edge', side });
+                  return;
+                }
+              }
+            }
             const result = hitTestPoint(event.clientX, event.clientY, chapter) ?? null;
             if (result) {
               const currentSentenceId = focusTarget ? sentenceIdForSegment(focusTarget) : undefined;
@@ -1043,7 +1133,7 @@ export function ReaderView({
             transform: `translateX(${-page * stride}px)`,
           }}
         >
-          <ChapterView chapter={chapter} />
+          <ChapterView chapter={chapter} language={language} />
         </div>
         {focusEnabled && focusOutlines.length > 0 ? (
           <div className="focus-outline-layer" aria-hidden="true">
@@ -1071,6 +1161,7 @@ export function ReaderView({
             return sentence ? { sentence } : {};
           })()}
           placement={card.placement}
+          language={language}
           {...(llm ? { llm } : {})}
           {...(llm ? { adapter: llm.adapter } : {})}
           bookId={book.id}
@@ -1086,6 +1177,7 @@ export function ReaderView({
         <TranslationPopover
           sentence={translation.text}
           placement={translation.placement}
+          language={language}
           {...(llm ? { llm } : {})}
           onOpenSettings={onOpenSettings}
           onClose={() => setTranslation(null)}
@@ -1097,6 +1189,7 @@ export function ReaderView({
           sentence={focusSentenceText}
           nextSentences={nextSentenceTexts}
           placement={subtitlePlacement}
+          language={language}
           {...(llm ? { llm } : {})}
         />
       ) : null}
@@ -1104,11 +1197,11 @@ export function ReaderView({
       {note ? (
         <aside className="note-popup" data-note-popup>
           <header className="note-header">
-            <h3>脚注</h3>
+            <h3>{t('reader.footnote')}</h3>
             <button
               type="button"
               className="reader-button"
-              aria-label="关闭脚注"
+              aria-label={t('reader.closeFootnote')}
               onClick={() => setNote(null)}
             >
               <IconX size={18} />
@@ -1130,7 +1223,7 @@ export function ReaderView({
             }
           }}
         >
-          回到当前句
+          {t('reader.backToCurrent')}
         </button>
       ) : null}
 
@@ -1152,7 +1245,7 @@ export function ReaderView({
             <button
               type="button"
               className="reader-button"
-              aria-label="上一片段"
+              aria-label={t('reader.prevSegment')}
               onClick={(event) => {
                 event.stopPropagation();
                 if (playback?.status === 'playing') {
@@ -1168,19 +1261,19 @@ export function ReaderView({
             <button
               type="button"
               className={`focus-subtitle-toggle${subtitlesOn ? ' is-active' : ''}`}
-              aria-label="字幕"
+              aria-label={t('reader.subtitles')}
               aria-pressed={subtitlesOn}
               onClick={(event) => {
                 event.stopPropagation();
                 setSubtitlesOn((value) => !value);
               }}
             >
-              译
+              {t('reader.translateShort')}
             </button>
             <button
               type="button"
               className="reader-button"
-              aria-label="下一片段"
+              aria-label={t('reader.nextSegment')}
               onClick={(event) => {
                 event.stopPropagation();
                 if (playback?.status === 'playing') {
@@ -1196,7 +1289,11 @@ export function ReaderView({
             <button
               type="button"
               className="reader-button"
-              aria-label={playback?.status === 'playing' ? '暂停播放' : '播放'}
+              aria-label={
+                playback?.status === 'playing'
+                  ? t('reader.pausePlayback')
+                  : t('reader.play')
+              }
               data-playback-toggle
               disabled={!playback}
               onClick={(event) => {
@@ -1212,7 +1309,7 @@ export function ReaderView({
             <button
               type="button"
               className="reader-button"
-              aria-label="上一页"
+              aria-label={t('reader.prevPage')}
               onClick={(event) => {
                 event.stopPropagation();
                 previousPage();
@@ -1223,19 +1320,26 @@ export function ReaderView({
             </button>
             <div className="reader-progress" aria-live="polite">
               <span className="progress-chapter">
-                第 {chapter.index + 1} / {chapters.length} 章
+                {t('reader.chapterOf', {
+                  current: chapter.index + 1,
+                  total: chapters.length,
+                })}
               </span>
               <span className="progress-separator" aria-hidden="true">
                 ·
               </span>
               <span className="progress-meta">
-                {page + 1} / {pageCount} 页 · {overallPercent}%
+                {t('reader.pageOf', {
+                  page: page + 1,
+                  pages: pageCount,
+                  percent: overallPercent,
+                })}
               </span>
             </div>
             <button
               type="button"
               className="reader-button"
-              aria-label="下一页"
+              aria-label={t('reader.nextPage')}
               onClick={(event) => {
                 event.stopPropagation();
                 nextPage();
@@ -1254,7 +1358,7 @@ export function ReaderView({
             <button
               type="button"
               className="reader-button"
-              aria-label="减小字号"
+              aria-label={t('reader.decreaseFont')}
               onClick={() => adjustFont(-10)}
             >
               A−
@@ -1263,7 +1367,7 @@ export function ReaderView({
             <button
               type="button"
               className="reader-button"
-              aria-label="增大字号"
+              aria-label={t('reader.increaseFont')}
               onClick={() => adjustFont(10)}
             >
               A+
@@ -1278,18 +1382,31 @@ export function ReaderView({
             Focus
           </button>
           <label className="menu-field focus-unit-field">
-            <span className="menu-field-label">推进单位</span>
+            <span className="menu-field-label">{t('reader.focusUnit')}</span>
             <select
               className="theme-select"
-              aria-label="Focus 推进单位"
+              aria-label={t('reader.focusUnitAria')}
               value={focusUnit}
               onChange={(event) => changeFocusUnit(event.target.value as FocusUnit)}
             >
-              <option value="sentence">句子</option>
-              <option value="chunk">意群</option>
+              <option value="sentence">{t('reader.unitSentence')}</option>
+              <option value="chunk">{t('reader.unitChunk')}</option>
             </select>
           </label>
-          <span className="menu-note">正文分页只在排版变化时重算</span>
+          <label className="edge-turn-field">
+            <input
+              type="checkbox"
+              aria-label={t('reader.edgeTurnAria')}
+              checked={edgeTurn}
+              onChange={(event) => {
+                const value = event.target.checked;
+                setEdgeTurnPreference(value);
+                writeEdgeTurnPreference(value);
+              }}
+            />
+            <span>{t('reader.edgeTurn')}</span>
+          </label>
+          <span className="menu-note">{t('reader.layoutNote')}</span>
         </div>
       ) : null}
     </div>

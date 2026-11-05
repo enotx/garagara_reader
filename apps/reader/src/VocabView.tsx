@@ -3,10 +3,11 @@ import type { BookSummary, SqliteAdapter, VocabEntry } from '@garagara/storage';
 import { listVocab, removeVocab, setVocabStatus } from '@garagara/storage';
 import { useEffect, useState } from 'react';
 
+import { localeFor, translator, type AppLanguage } from './i18n.js';
 import { IconBookmark, IconChevronRight, IconX } from './icons';
 
-function formatDate(timestamp: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
+function formatDate(timestamp: number, language: AppLanguage): string {
+  return new Intl.DateTimeFormat(localeFor(language), {
     month: 'short',
     day: 'numeric',
   }).format(timestamp);
@@ -29,12 +30,15 @@ function SentencePreview({ sentence, lemma }: { sentence: string; lemma: string 
 export function VocabView({
   adapter,
   books,
+  language,
   onOpenBook,
 }: {
   adapter: SqliteAdapter | undefined;
   books: BookSummary[];
+  language: AppLanguage;
   onOpenBook: (book: BookSummary, locator: Locator) => void;
 }) {
+  const t = translator(language);
   const [entries, setEntries] = useState<VocabEntry[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -93,10 +97,12 @@ export function VocabView({
       <header className="settings-topbar">
         <div className="settings-topbar-inner">
           <div className="settings-heading">
-            <p className="eyebrow">生词本</p>
-            <h1>收集的词</h1>
+            <p className="eyebrow">{t('vocab.eyebrow')}</p>
+            <h1>{t('vocab.title')}</h1>
           </div>
-          <span className="collection-count">{entries.length} 条</span>
+          <span className="collection-count">
+            {t('vocab.count', { count: entries.length })}
+          </span>
           <span className="settings-mark" aria-hidden="true">
             <IconBookmark size={18} />
           </span>
@@ -105,28 +111,28 @@ export function VocabView({
 
       <div className="vocab-shell">
         <label className="vocab-search">
-          <span className="visually-hidden">搜索生词</span>
+          <span className="visually-hidden">{t('vocab.search')}</span>
           <input
             type="search"
-            aria-label="搜索生词"
-            placeholder="搜索单词、短语或原句"
+            aria-label={t('vocab.search')}
+            placeholder={t('vocab.searchPlaceholder')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
 
-        {loading ? <p className="muted">正在读取生词本…</p> : null}
+        {loading ? <p className="muted">{t('vocab.loading')}</p> : null}
         {!loading && entries.length === 0 ? (
           <section className="empty-state">
             <span className="empty-mark" aria-hidden="true">
               <IconBookmark size={26} strokeWidth={1.3} />
             </span>
-            <h3>还没有生词</h3>
-            <p className="empty-hint">阅读时点开词卡，点右上角的 ☆ 收集单词或短语。</p>
+            <h3>{t('vocab.emptyTitle')}</h3>
+            <p className="empty-hint">{t('vocab.emptyHint')}</p>
           </section>
         ) : null}
         {!loading && entries.length > 0 && visible.length === 0 ? (
-          <p className="muted">没有匹配的生词。</p>
+          <p className="muted">{t('vocab.noMatch')}</p>
         ) : null}
 
         {visible.length > 0 ? (
@@ -137,7 +143,7 @@ export function VocabView({
                   <button
                     type="button"
                     className="vocab-open"
-                    aria-label={`跳回原文：${entry.lemma}`}
+                    aria-label={t('vocab.jump', { lemma: entry.lemma })}
                     onClick={() => jump(entry)}
                   >
                     <span className="vocab-lemma">{entry.lemma}</span>
@@ -147,32 +153,32 @@ export function VocabView({
                     <span className="vocab-meta">
                       <span>
                         {books.find((book) => book.id === entry.locator.bookId)?.title ??
-                          '未知书籍'}
+                          t('vocab.unknownBook')}
                       </span>
                       <span>·</span>
-                      <span>{formatDate(entry.createdAt)}</span>
+                      <span>{formatDate(entry.createdAt, language)}</span>
                       <IconChevronRight size={15} />
                     </span>
                   </button>
                   <div className="vocab-actions">
                     <span className={`vocab-status${entry.status === 'known' ? ' is-known' : ''}`}>
-                      {entry.status === 'known' ? '已知' : '学习中'}
+                      {entry.status === 'known' ? t('vocab.known') : t('vocab.learning')}
                     </span>
                     <button
                       type="button"
                       className="vocab-action"
                       onClick={() => void toggleKnown(entry)}
                     >
-                      {entry.status === 'known' ? '标记学习中' : '标记已知'}
+                      {entry.status === 'known' ? t('vocab.markLearning') : t('vocab.markKnown')}
                     </button>
                     <button
                       type="button"
                       className="vocab-action vocab-remove"
-                      aria-label={`删除 ${entry.lemma}`}
+                      aria-label={t('vocab.deleteAria', { lemma: entry.lemma })}
                       onClick={() => void remove(entry)}
                     >
                       <IconX size={14} />
-                      删除
+                      {t('common.delete')}
                     </button>
                   </div>
                 </article>

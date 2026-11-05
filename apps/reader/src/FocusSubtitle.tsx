@@ -1,6 +1,7 @@
 import { LlmError } from '@garagara/llm';
 import { useEffect, useRef, useState } from 'react';
 
+import { translator, type AppLanguage } from './i18n.js';
 import { describeLlmError } from './llm-errors.js';
 import { loadTranslation, type LlmRuntime } from './llm.js';
 import { isLlmConfigured } from './settings.js';
@@ -16,6 +17,7 @@ export function FocusSubtitle({
   sentence,
   nextSentences,
   placement,
+  language,
   llm,
 }: {
   /** Whole current sentence, even when it spans pages. */
@@ -23,8 +25,10 @@ export function FocusSubtitle({
   /** Following sentences for the 3-sentence prefetch. */
   nextSentences: readonly string[];
   placement: 'top' | 'bottom';
+  language: AppLanguage;
   llm?: LlmRuntime;
 }) {
+  const t = translator(language);
   const [state, setState] = useState<SubtitleState>({ status: 'loading' });
   const controllerRef = useRef<AbortController | null>(null);
   const nextKey = nextSentences.slice(0, 3).join('\n');
@@ -62,7 +66,7 @@ export function FocusSubtitle({
         if (error instanceof LlmError && error.kind === 'aborted') {
           return;
         }
-        setState({ status: 'error', message: describeLlmError(error) });
+        setState({ status: 'error', message: describeLlmError(error, language) });
       }
     }
 
@@ -99,13 +103,13 @@ export function FocusSubtitle({
       aria-live="polite"
     >
       <span className="focus-subtitle-label" aria-hidden="true">
-        译
+        {t('subtitle.label')}
       </span>
       <p>
-        {state.status === 'loading' ? '翻译中…' : null}
+        {state.status === 'loading' ? t('subtitle.loading') : null}
         {state.status === 'ready' ? state.translation : null}
-        {state.status === 'offline' ? '离线，暂无译文' : null}
-        {state.status === 'not-configured' ? '未配置 AI 服务' : null}
+        {state.status === 'offline' ? t('subtitle.offline') : null}
+        {state.status === 'not-configured' ? t('subtitle.notConfigured') : null}
         {state.status === 'error' ? state.message : null}
       </p>
     </aside>

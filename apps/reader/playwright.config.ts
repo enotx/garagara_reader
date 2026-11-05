@@ -21,5 +21,20 @@ export default defineConfig({
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // Keep a developer's local .env from changing the unconfigured-LLM tests.
+    env: {
+      ...Object.fromEntries(
+        Object.entries(process.env).filter((entry): entry is [string, string] => {
+          return entry[1] !== undefined;
+        }),
+      ),
+      VITE_LLM_BASE_URL: '',
+      VITE_LLM_MODEL: '',
+      VITE_LLM_API_KEY: '',
+      VITE_LLM_STRATEGY: '',
+      VITE_LLM_AUTO_REQUEST: '',
+      VITE_LLM_PREPROCESS: '',
+      VITE_LLM_PREPROCESS_CHAPTERS: '',
+    },
   },
 });

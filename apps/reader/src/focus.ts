@@ -2,6 +2,31 @@ import type { FocusSegment, PageInfo } from './page-map.js';
 
 export type FocusUnit = 'sentence' | 'chunk';
 
+/** Fraction of the reader viewport treated as the Focus "previous" zone. */
+export const FOCUS_BACK_ZONE_RATIO = 0.3;
+
+export interface FocusBackBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** True when a viewport point falls inside the top-left Focus back zone. */
+export function isFocusBackPoint(
+  point: { x: number; y: number },
+  bounds: FocusBackBounds,
+): boolean {
+  const x = point.x - bounds.left;
+  const y = point.y - bounds.top;
+  return (
+    x >= 0 &&
+    y >= 0 &&
+    x <= bounds.width * FOCUS_BACK_ZONE_RATIO &&
+    y <= bounds.height * FOCUS_BACK_ZONE_RATIO
+  );
+}
+
 export interface FocusPosition {
   page: number;
   segment: FocusSegment;

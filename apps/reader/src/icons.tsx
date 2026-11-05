@@ -48,6 +48,16 @@ export function IconBookmark(props: IconProps) {
   );
 }
 
+export function IconDictionary(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v18H7.5A2.5 2.5 0 0 0 5 22Z" />
+      <path d="M5 4.5V22" />
+      <path d="M9 7h7M9 11h7M9 15h4" />
+    </Svg>
+  );
+}
+
 export function IconPlus(props: IconProps) {
   return (
     <Svg {...props}>

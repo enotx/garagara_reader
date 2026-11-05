@@ -1,10 +1,12 @@
 import type { SqliteAdapter } from '@garagara/storage';
 import { useState } from 'react';
 
-import { IconChevronLeft, IconSettings } from './icons';
+import { LANGUAGE_OPTIONS, translator, type AppLanguage, type MessageKey } from './i18n.js';
+import { IconChevronLeft } from './icons';
 import { testLlmConnection } from './llm.js';
 import {
   DEFAULT_LLM_SETTINGS,
+  apiKeyUpdateFor,
   isLlmConfigured,
   writeLlmSettings,
   type DefinitionStrategy,
@@ -26,40 +28,40 @@ type TestStatus =
 
 const STRATEGIES: Array<{
   value: DefinitionStrategy;
-  title: string;
-  description: string;
+  titleKey: MessageKey;
+  descriptionKey: MessageKey;
 }> = [
   {
     value: 'online-first',
-    title: '联网优先',
-    description: '先显示词典释义占位，AI 结果返回后作为主显示。',
+    titleKey: 'settings.strategyOnline',
+    descriptionKey: 'settings.strategyOnlineDesc',
   },
   {
     value: 'dictionary-first',
-    title: '词典优先',
-    description: '先显示词典释义；没有匹配时自动请求 AI，随时可手动查询。',
+    titleKey: 'settings.strategyDict',
+    descriptionKey: 'settings.strategyDictDesc',
   },
 ];
 
 const PREPROCESS_POLICIES: Array<{
   value: PreprocessPolicy;
-  title: string;
-  description: string;
+  titleKey: MessageKey;
+  descriptionKey: MessageKey;
 }> = [
   {
     value: 'off',
-    title: '关闭',
-    description: '只在需要时请求 AI，不做后台预处理。',
+    titleKey: 'settings.preprocessOff',
+    descriptionKey: 'settings.preprocessOffDesc',
   },
   {
     value: 'wifi',
-    title: '仅 Wi-Fi',
-    description: '在 Wi-Fi 下预取当前章之后的内容，蜂窝网络不请求。',
+    titleKey: 'settings.preprocessWifi',
+    descriptionKey: 'settings.preprocessWifiDesc',
   },
   {
     value: 'always',
-    title: '总是',
-    description: '只要联网就预取，可能使用蜂窝数据。',
+    titleKey: 'settings.preprocessAlways',
+    descriptionKey: 'settings.preprocessAlwaysDesc',
   },
 ];
 
@@ -83,15 +85,19 @@ export function SettingsView({
   apiKey: string;
   backLabel: string;
   onBack: () => void;
-  onSaved: (settings: ReaderLlmSettings, apiKey: string) => void | Promise<void>;
+  onSaved: (settings: ReaderLlmSettings, apiKeyUpdate?: string) => void | Promise<void>;
 }) {
+  const t = translator(settings.uiLanguage);
   const [baseURL, setBaseURL] = useState(settings.baseURL);
   const [model, setModel] = useState(settings.model);
   const [keyDraft, setKeyDraft] = useState(apiKey);
+  const [keyTouched, setKeyTouched] = useState(false);
   const [strategy, setStrategy] = useState<DefinitionStrategy>(settings.strategy);
   const [autoRequest, setAutoRequest] = useState(settings.autoRequest);
   const [preprocess, setPreprocess] = useState<PreprocessPolicy>(settings.preprocess);
   const [preprocessChapters, setPreprocessChapters] = useState(settings.preprocessChapters);
+  const [uiLanguage, setUiLanguage] = useState<AppLanguage>(settings.uiLanguage);
+  const [explainLanguage, setExplainLanguage] = useState<AppLanguage>(settings.explainLanguage);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ state: 'idle' });
   const [testStatus, setTestStatus] = useState<TestStatus>({ state: 'idle' });
 
@@ -102,6 +108,8 @@ export function SettingsView({
     autoRequest,
     preprocess,
     preprocessChapters,
+    uiLanguage,
+    explainLanguage,
   };
 
   async function save(): Promise<void> {
@@ -109,23 +117,26 @@ export function SettingsView({
       return;
     }
     if (Boolean(baseURL.trim()) !== Boolean(model.trim())) {
-      setSaveStatus({ state: 'error', message: 'Base URL 和模型需要同时填写。' });
+      setSaveStatus({ state: 'error', message: t('settings.baseModelRequired') });
       return;
     }
     setSaveStatus({ state: 'saving' });
     try {
       await writeLlmSettings(adapter, draft);
-      await onSaved(draft, keyDraft);
+      await onSaved(draft, apiKeyUpdateFor(keyTouched, keyDraft));
       setSaveStatus({ state: 'saved' });
     } catch (error) {
-      setSaveStatus({ state: 'error', message: `保存失败：${reasonFor(error)}` });
+      setSaveStatus({
+        state: 'error',
+        message: t('settings.saveFailed', { error: reasonFor(error) }),
+      });
     }
   }
 
   async function runTest(): Promise<void> {
     setTestStatus({ state: 'testing' });
     try {
-      const reply = await testLlmConnection(draft, keyDraft);
+      const reply = await testLlmConnection(draft, keyTouched ? keyDraft : apiKey);
       setTestStatus({ state: 'ok', reply });
     } catch (error) {
       setTestStatus({ state: 'error', message: reasonFor(error) });
@@ -140,27 +151,83 @@ export function SettingsView({
             <IconChevronLeft size={22} />
           </button>
           <div className="settings-heading">
-            <p className="eyebrow">设置</p>
-            <h1>阅读与 AI</h1>
+            <p className="eyebrow">{t('settings.eyebrow')}</p>
+            <h1>{t('settings.title')}</h1>
           </div>
-          <span className="settings-mark" aria-hidden="true">
-            <IconSettings size={18} />
-          </span>
+          <button
+            type="button"
+            className="button-primary settings-save-button"
+            aria-label={t('settings.save')}
+            title={t('settings.saveAll')}
+            onClick={() => void save()}
+            disabled={!adapter || saveStatus.state === 'saving'}
+          >
+            {saveStatus.state === 'saving' ? t('settings.saving') : t('settings.save')}
+          </button>
         </div>
       </header>
 
       <div className="settings-shell">
+        <section className="settings-group" aria-labelledby="settings-language-title">
+          <header className="settings-group-head">
+            <div>
+              <h2 id="settings-language-title">{t('settings.languageTitle')}</h2>
+              <p>{t('settings.languageDesc')}</p>
+            </div>
+          </header>
+
+          <div className="settings-fields settings-language-fields">
+            <label className="settings-field">
+              <span className="settings-label">{t('settings.uiLanguage')}</span>
+              <select
+                aria-label={t('settings.uiLanguage')}
+                value={uiLanguage}
+                onChange={(event) => {
+                  setUiLanguage(event.target.value as AppLanguage);
+                  setSaveStatus({ state: 'idle' });
+                }}
+              >
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="settings-field">
+              <span className="settings-label">{t('settings.explainLanguage')}</span>
+              <select
+                aria-label={t('settings.explainLanguage')}
+                value={explainLanguage}
+                onChange={(event) => {
+                  setExplainLanguage(event.target.value as AppLanguage);
+                  setSaveStatus({ state: 'idle' });
+                }}
+              >
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="settings-hint">{t('settings.languageHint')}</p>
+        </section>
+
         <section className="settings-group" aria-labelledby="settings-ai-title">
           <header className="settings-group-head">
             <div>
-              <h2 id="settings-ai-title">AI 服务</h2>
-              <p>使用你自己的 OpenAI-compatible 接口。书籍内容只在请求时发送。</p>
+              <h2 id="settings-ai-title">{t('settings.aiTitle')}</h2>
+              <p>{t('settings.aiDesc')}</p>
             </div>
             <span
               className={`settings-badge${isLlmConfigured(draft) ? ' is-ready' : ''}`}
               aria-live="polite"
             >
-              {isLlmConfigured(draft) ? '已配置' : '未配置'}
+              {isLlmConfigured(draft)
+                ? t('settings.configured')
+                : t('settings.notConfigured')}
             </span>
           </header>
 
@@ -181,7 +248,7 @@ export function SettingsView({
               />
             </label>
             <label className="settings-field">
-              <span className="settings-label">模型</span>
+              <span className="settings-label">{t('settings.model')}</span>
               <input
                 type="text"
                 autoComplete="off"
@@ -197,7 +264,9 @@ export function SettingsView({
             <label className="settings-field">
               <span className="settings-label">
                 API Key
-                <small>{apiKey ? '当前会话已填写' : '可留空（本地服务）'}</small>
+                <small>
+                  {apiKey ? t('settings.keySaved') : t('settings.keyOptional')}
+                </small>
               </span>
               <input
                 type="password"
@@ -206,39 +275,29 @@ export function SettingsView({
                 value={keyDraft}
                 onChange={(event) => {
                   setKeyDraft(event.target.value);
+                  setKeyTouched(true);
                   setSaveStatus({ state: 'idle' });
                 }}
               />
             </label>
           </div>
 
-          <p className="settings-hint">
-            网页开发版的 API Key 只保存在当前页面内存里，刷新或关闭后需要重新填写；iOS 版会写入
-            Keychain，不写入数据库或日志。
-          </p>
+          <p className="settings-hint">{t('settings.keyHint')}</p>
 
           <div className="settings-actions">
-            <button
-              type="button"
-              className="button-primary"
-              onClick={() => void save()}
-              disabled={!adapter || saveStatus.state === 'saving'}
-            >
-              {saveStatus.state === 'saving' ? '保存中…' : '保存'}
-            </button>
             <button
               type="button"
               className="button-secondary"
               onClick={() => void runTest()}
               disabled={testStatus.state === 'testing'}
             >
-              {testStatus.state === 'testing' ? '测试中…' : '测试连接'}
+              {testStatus.state === 'testing' ? t('settings.testing') : t('settings.test')}
             </button>
           </div>
 
           {saveStatus.state === 'saved' ? (
             <p className="settings-feedback is-success" role="status">
-              设置已保存。
+              {t('settings.saved')}
             </p>
           ) : null}
           {saveStatus.state === 'error' ? (
@@ -248,12 +307,12 @@ export function SettingsView({
           ) : null}
           {testStatus.state === 'ok' ? (
             <p className="settings-feedback is-success" role="status">
-              连接成功：{testStatus.reply}
+              {t('settings.testOk', { reply: testStatus.reply })}
             </p>
           ) : null}
           {testStatus.state === 'error' ? (
             <p className="settings-feedback is-error" role="status">
-              连接失败：{testStatus.message}
+              {t('settings.testFailed', { message: testStatus.message })}
             </p>
           ) : null}
         </section>
@@ -261,8 +320,8 @@ export function SettingsView({
         <section className="settings-group" aria-labelledby="settings-source-title">
           <header className="settings-group-head">
             <div>
-              <h2 id="settings-source-title">释义来源</h2>
-              <p>决定词卡先显示词典还是 AI 结果。</p>
+              <h2 id="settings-source-title">{t('settings.sourceTitle')}</h2>
+              <p>{t('settings.sourceDesc')}</p>
             </div>
           </header>
 
@@ -287,8 +346,8 @@ export function SettingsView({
                   }}
                 />
                 <span className="settings-option-copy">
-                  <strong>{item.title}</strong>
-                  <span>{item.description}</span>
+                  <strong>{t(item.titleKey)}</strong>
+                  <span>{t(item.descriptionKey)}</span>
                 </span>
               </label>
             ))}
@@ -296,8 +355,8 @@ export function SettingsView({
 
           <label className="settings-switch">
             <span>
-              <strong>点词时自动请求本句含义</strong>
-              <span>关闭后，词卡里只显示按钮，需要手动查询。</span>
+              <strong>{t('settings.autoRequest')}</strong>
+              <span>{t('settings.autoRequestDesc')}</span>
             </span>
             <input
               type="checkbox"
@@ -313,8 +372,8 @@ export function SettingsView({
         <section className="settings-group" aria-labelledby="settings-preprocess-title">
           <header className="settings-group-head">
             <div>
-              <h2 id="settings-preprocess-title">预处理</h2>
-              <p>播放和阅读时，提前翻译后面的句子并整理短语与生词。</p>
+              <h2 id="settings-preprocess-title">{t('settings.preprocessTitle')}</h2>
+              <p>{t('settings.preprocessDesc')}</p>
             </div>
           </header>
 
@@ -339,8 +398,8 @@ export function SettingsView({
                   }}
                 />
                 <span className="settings-option-copy">
-                  <strong>{item.title}</strong>
-                  <span>{item.description}</span>
+                  <strong>{t(item.titleKey)}</strong>
+                  <span>{t(item.descriptionKey)}</span>
                 </span>
               </label>
             ))}
@@ -348,8 +407,8 @@ export function SettingsView({
 
           <label className="settings-field">
             <span className="settings-label">
-              往后预处理的章数
-              <small>当前章之后，默认 1 章</small>
+              {t('settings.preprocessChapters')}
+              <small>{t('settings.preprocessChaptersHint')}</small>
             </span>
             <input
               type="number"
@@ -369,15 +428,10 @@ export function SettingsView({
           </label>
         </section>
 
-        <section className="settings-group settings-privacy" aria-label="隐私说明">
-          <h2>隐私</h2>
-          <p>
-            API Key 不写入 SQLite、不打印到日志。请求只发往你填写的 Base
-            URL，只包含当前句子和目标词。
-          </p>
-          <p className="settings-version">
-            默认值参考 Spec §14：联网优先，自动请求，解释语言中文。
-          </p>
+        <section className="settings-group settings-privacy" aria-label={t('settings.privacyTitle')}>
+          <h2>{t('settings.privacyTitle')}</h2>
+          <p>{t('settings.privacyDesc')}</p>
+          <p className="settings-version">{t('settings.defaultHint')}</p>
           <button
             type="button"
             className="settings-reset"
@@ -391,7 +445,7 @@ export function SettingsView({
               setSaveStatus({ state: 'idle' });
             }}
           >
-            恢复默认释义设置
+            {t('settings.reset')}
           </button>
         </section>
       </div>

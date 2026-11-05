@@ -2,6 +2,7 @@ import type { Block, Mark, Sentence } from '@garagara/core';
 import type { StoredChapter } from '@garagara/storage';
 import { memo, useMemo } from 'react';
 
+import { translator, type AppLanguage } from './i18n.js';
 import { buildFragments } from './render-fragments.js';
 
 function markClass(mark: Mark): string {
@@ -32,7 +33,15 @@ function FragmentText({
   );
 }
 
-function BlockView({ block, sentences }: { block: Block; sentences: Sentence[] }) {
+function BlockView({
+  block,
+  sentences,
+  imageAlt,
+}: {
+  block: Block;
+  sentences: Sentence[];
+  imageAlt: string;
+}) {
   const fragments = buildFragments(block.text, block.marks, sentences);
   const children = fragments.map((fragment) => (
     <FragmentText
@@ -53,7 +62,7 @@ function BlockView({ block, sentences }: { block: Block; sentences: Sentence[] }
         <div
           className="image-placeholder"
           role="img"
-          aria-label={block.image?.alt || '图片'}
+          aria-label={block.image?.alt || imageAlt}
           style={{ aspectRatio: `${block.image?.width || 1} / ${block.image?.height || 1}` }}
         ></div>
       </figure>
@@ -110,7 +119,14 @@ function BlockView({ block, sentences }: { block: Block; sentences: Sentence[] }
   }
 }
 
-export const ChapterView = memo(function ChapterView({ chapter }: { chapter: StoredChapter }) {
+export const ChapterView = memo(function ChapterView({
+  chapter,
+  language,
+}: {
+  chapter: StoredChapter;
+  language: AppLanguage;
+}) {
+  const t = translator(language);
   const byBlock = useMemo(() => {
     const map = new Map<string, Sentence[]>();
     for (const sentence of chapter.sentences) {
@@ -124,7 +140,12 @@ export const ChapterView = memo(function ChapterView({ chapter }: { chapter: Sto
   return (
     <article className="chapter-view" data-chapter={chapter.id}>
       {chapter.blocks.map((block) => (
-        <BlockView key={block.id} block={block} sentences={byBlock.get(block.id) ?? []} />
+        <BlockView
+          key={block.id}
+          block={block}
+          sentences={byBlock.get(block.id) ?? []}
+          imageAlt={t('common.image')}
+        />
       ))}
     </article>
   );

@@ -10,19 +10,31 @@ import type {
 } from '@garagara/storage';
 import {
   getChapter,
+  getProgress,
   importBookToStorage,
   listBooks,
   listChapterCharCounts,
   listChapters,
   listNotes,
   listPlayableSentences,
+  saveProgress,
 } from '@garagara/storage';
 import { Capacitor } from '@capacitor/core';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import {
+  localeFor,
+  translator,
+  type AppLanguage,
+  type MessageKey,
+  type Translate,
+} from './i18n.js';
+import { chapterIndexForLocator } from './locator-navigation.js';
 
 import {
   IconBook,
   IconBookmark,
+  IconDictionary,
   IconChevronRight,
   IconInfo,
   IconMore,
@@ -33,6 +45,7 @@ import {
 import { openDatabase } from './database.js';
 import { devLlmEnvFromEnv } from './dev-env.js';
 import { pickBookFile, readSharedBook } from './files.js';
+import { DictionaryView } from './DictionaryView';
 import { ReaderView } from './ReaderView';
 import { readApiKey, writeApiKey } from './secrets.js';
 import { SettingsView } from './SettingsView';
@@ -53,19 +66,32 @@ function coverTone(id: string): number {
   return (hash % 6) + 1;
 }
 
-function formatImportDate(timestamp: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
+function formatImportDate(timestamp: number, language: AppLanguage): string {
+  return new Intl.DateTimeFormat(localeFor(language), {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   }).format(timestamp);
 }
 
-type AppView = 'library' | 'vocab' | 'settings';
+type AppView = 'library' | 'dictionary' | 'vocab' | 'settings';
 
-function TabBar({ active, onSelect }: { active: AppView; onSelect: (tab: AppView) => void }) {
+interface StatusMessage {
+  key: MessageKey;
+  params?: Record<string, string | number>;
+}
+
+function TabBar({
+  active,
+  onSelect,
+  t,
+}: {
+  active: AppView;
+  onSelect: (tab: AppView) => void;
+  t: Translate;
+}) {
   return (
-    <nav className="tab-bar" aria-label="主导航">
+    <nav className="tab-bar" aria-label={t('nav.main')}>
       <div className="tab-bar-inner">
         <button
           type="button"
@@ -78,7 +104,20 @@ function TabBar({ active, onSelect }: { active: AppView; onSelect: (tab: AppView
           }}
         >
           <IconBook size={20} />
-          书架
+          {t('nav.library')}
+        </button>
+        <button
+          type="button"
+          className={`tab-item${active === 'dictionary' ? ' is-active' : ''}`}
+          aria-current={active === 'dictionary' ? 'page' : undefined}
+          onClick={() => {
+            if (active !== 'dictionary') {
+              onSelect('dictionary');
+            }
+          }}
+        >
+          <IconDictionary size={20} />
+          {t('nav.dictionary')}
         </button>
         <button
           type="button"
@@ -91,7 +130,7 @@ function TabBar({ active, onSelect }: { active: AppView; onSelect: (tab: AppView
           }}
         >
           <IconBookmark size={20} />
-          生词本
+          {t('nav.vocab')}
         </button>
         <button
           type="button"
@@ -104,7 +143,7 @@ function TabBar({ active, onSelect }: { active: AppView; onSelect: (tab: AppView
           }}
         >
           <IconSettings size={20} />
-          设置
+          {t('nav.settings')}
         </button>
       </div>
     </nav>
@@ -112,7 +151,7 @@ function TabBar({ active, onSelect }: { active: AppView; onSelect: (tab: AppView
 }
 
 export function App() {
-  const [status, setStatus] = useState('正在打开本地书库…');
+  const [status, setStatus] = useState<StatusMessage | null>({ key: 'status.opening' });
   const [busy, setBusy] = useState(false);
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [selected, setSelected] = useState<BookSummary | undefined>();
@@ -134,11 +173,21 @@ export function App() {
   const playbackEngineRef = useRef<WebSpeechPlaybackEngine | undefined>(undefined);
   const playbackBrowsingRef = useRef(false);
   const chapterIndexRef = useRef<number | undefined>(undefined);
+  const lastSavedProgress = useRef('');
+  const progressChain = useRef<Promise<void>>(Promise.resolve());
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const language = llmSettings.uiLanguage;
+  const t = translator(language);
+  const statusText = status ? t(status.key, status.params) : '';
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   useEffect(() => {
     let active = true;
@@ -158,11 +207,11 @@ export function App() {
         setBooks(rows);
         setLlmSettings(seededSettings);
         setApiKey(storedKey || env.apiKey);
-        setStatus('');
+        setStatus(null);
       })
       .catch((error: unknown) => {
         if (active) {
-          setStatus(`打开书库失败：${String(error)}`);
+          setStatus({ key: 'status.openFailed', params: { error: String(error) } });
         }
       });
     return () => {
@@ -189,19 +238,48 @@ export function App() {
     return rows;
   }
 
+  const handleProgress = useCallback(
+    (locator: Locator): void => {
+      if (!adapter) {
+        return;
+      }
+      const key = `${locator.bookId}:${locator.chapterIndex}:${locator.blockIndex}:${locator.offset}`;
+      if (key === lastSavedProgress.current) {
+        return;
+      }
+      lastSavedProgress.current = key;
+      const write = progressChain.current.then(() =>
+        saveProgress(adapter, locator.bookId, locator),
+      );
+      progressChain.current = write.catch(() => {
+        if (key === lastSavedProgress.current) {
+          lastSavedProgress.current = '';
+        }
+      });
+      void progressChain.current;
+    },
+    [adapter],
+  );
+
   async function handleBook(name: string, bytes: Uint8Array): Promise<void> {
     setBusy(true);
-    setStatus(`正在导入 ${name}…`);
+    setStatus({ key: 'status.importing', params: { name } });
     try {
       const adapter = await openDatabase();
       const book = await importBook(bytes, name);
       const stats = await importBookToStorage(adapter, book);
       await refreshBooks(adapter);
-      setStatus(
-        `已导入《${book.metadata.title}》：${stats.chapters} 章、${stats.sentences} 句、${stats.chunks} 个意群。`,
-      );
+      setStatus({
+        key: 'status.imported',
+        params: {
+          title: book.metadata.title,
+          chapters: stats.chapters,
+          sentences: stats.sentences,
+          chunks: stats.chunks,
+        },
+      });
     } catch (error) {
-      setStatus(`导入失败：${String(error)}`);
+      setStatus({ key: 'status.importFailed', params: { error: String(error) } });
     } finally {
       setBusy(false);
     }
@@ -226,7 +304,7 @@ export function App() {
       }
       fileInputRef.current?.click();
     } catch (error) {
-      setStatus(`导入失败：${String(error)}`);
+      setStatus({ key: 'status.importFailed', params: { error: String(error) } });
     }
   }
 
@@ -249,7 +327,7 @@ export function App() {
             return undefined;
           })
           .catch((error: unknown) => {
-            setStatus(`打开文件失败：${String(error)}`);
+            setStatus({ key: 'status.openFileFailed', params: { error: String(error) } });
           });
       });
       if (active) {
@@ -342,7 +420,6 @@ export function App() {
     setBusy(true);
     setSheetBook(null);
     setView('library');
-    setInitialLocator(locator);
     setReaderSession((value) => value + 1);
     disposePlayback();
     try {
@@ -351,17 +428,22 @@ export function App() {
       const sizes = await listChapterCharCounts(adapter, book.id);
       const noteRows = await listNotes(adapter, book.id);
       const queue = await listPlayableSentences(adapter, book.id);
+      const savedLocator = locator ?? (await getProgress(adapter, book.id));
+      const targetChapter = chapterIndexForLocator(rows, savedLocator);
+      const chapterIndex = targetChapter ?? rows[0]?.index;
       setSelected(book);
       setChapters(rows);
       setChapterSizes(sizes);
       setNotes(noteRows);
-      const first = rows[0];
-      chapterIndexRef.current = first?.index;
-      setChapter(first ? await getChapter(adapter, book.id, first.index) : undefined);
+      setInitialLocator(targetChapter === undefined ? undefined : savedLocator);
+      chapterIndexRef.current = chapterIndex;
+      setChapter(
+        chapterIndex === undefined ? undefined : await getChapter(adapter, book.id, chapterIndex),
+      );
       installPlayback(book, queue);
-      setStatus('');
+      setStatus(null);
     } catch (error) {
-      setStatus(`读取失败：${String(error)}`);
+      setStatus({ key: 'status.readFailed', params: { error: String(error) } });
     } finally {
       setBusy(false);
     }
@@ -390,15 +472,26 @@ export function App() {
           adapter={adapter}
           settings={llmSettings}
           apiKey={apiKey}
-          backLabel={selected && chapter ? '返回阅读' : '返回书架'}
+          backLabel={t(selected && chapter ? 'settings.backReader' : 'settings.backLibrary')}
           onBack={() => setView('library')}
-          onSaved={async (nextSettings, nextApiKey) => {
+          onSaved={async (nextSettings, apiKeyUpdate) => {
             setLlmSettings(nextSettings);
-            setApiKey(nextApiKey);
-            await writeApiKey(nextApiKey);
+            if (apiKeyUpdate !== undefined) {
+              setApiKey(apiKeyUpdate);
+              await writeApiKey(apiKeyUpdate);
+            }
           }}
         />
-        <TabBar active="settings" onSelect={selectTab} />
+        <TabBar active="settings" onSelect={selectTab} t={t} />
+      </>
+    );
+  }
+
+  if (view === 'dictionary') {
+    return (
+      <>
+        <DictionaryView language={language} />
+        <TabBar active="dictionary" onSelect={selectTab} t={t} />
       </>
     );
   }
@@ -409,9 +502,10 @@ export function App() {
         <VocabView
           adapter={adapter}
           books={books}
+          language={language}
           onOpenBook={(book, locator) => void openBook(book, locator)}
         />
-        <TabBar active="vocab" onSelect={selectTab} />
+        <TabBar active="vocab" onSelect={selectTab} t={t} />
       </>
     );
   }
@@ -426,6 +520,7 @@ export function App() {
         chapterSizes={chapterSizes}
         notes={notes}
         theme={theme}
+        language={language}
         {...(adapter ? { llm: { adapter, settings: llmSettings, apiKey } } : {})}
         {...(initialLocator ? { initialLocator } : {})}
         {...(playbackEngineRef.current
@@ -440,6 +535,7 @@ export function App() {
             }
           : {})}
         onThemeChange={setTheme}
+        onProgress={handleProgress}
         onChapterChange={(chapterIndex) => void openChapter(chapterIndex)}
         onExit={() => {
           disposePlayback();
@@ -466,19 +562,9 @@ export function App() {
             </span>
             <div className="brand-copy">
               <h1>Garagara Reader</h1>
-              <p>本地优先的外语阅读器</p>
+              <p>{t('app.tagline')}</p>
             </div>
           </div>
-          <button
-            type="button"
-            className={`icon-button primary${busy ? ' disabled' : ''}`}
-            aria-label="导入 EPUB 或 TXT"
-            aria-disabled={busy}
-            disabled={busy}
-            onClick={() => void startImport()}
-          >
-            <IconPlus size={20} />
-          </button>
         </div>
       </header>
 
@@ -499,12 +585,14 @@ export function App() {
       <div className="library-shell">
         <div className="collection-header">
           <div>
-            <p className="eyebrow">书架</p>
+            <p className="eyebrow">{t('library.eyebrow')}</p>
             <h2 className="collection-title">
-              我的藏书
-              <span className="collection-count">{books.length} 本</span>
+              {t('library.title')}
+              <span className="collection-count">
+                {t('library.count', { count: books.length })}
+              </span>
             </h2>
-            <p className="collection-subtitle">最近导入的书排在前面。点封面继续阅读。</p>
+            <p className="collection-subtitle">{t('library.subtitle')}</p>
           </div>
           <button
             type="button"
@@ -514,7 +602,7 @@ export function App() {
             onClick={() => void startImport()}
           >
             <IconPlus size={16} />
-            导入
+            {t('library.import')}
           </button>
         </div>
 
@@ -523,10 +611,10 @@ export function App() {
             <div className="import-progress-head">
               <span className="import-progress-title">
                 <IconBook size={18} />
-                正在整理新书
+                {t('library.importing')}
               </span>
             </div>
-            <p className="import-progress-status">{status}</p>
+            <p className="import-progress-status">{statusText}</p>
             <div className="import-progress-track" aria-hidden="true">
               <span />
             </div>
@@ -534,7 +622,7 @@ export function App() {
         ) : status ? (
           <p className="status-strip" role="status" aria-live="polite">
             <IconInfo size={15} />
-            {status}
+            {statusText}
           </p>
         ) : null}
 
@@ -543,8 +631,8 @@ export function App() {
             <span className="empty-mark" aria-hidden="true">
               <IconBook size={28} strokeWidth={1.3} />
             </span>
-            <h3>从第一本书开始</h3>
-            <p className="empty-hint">书库为空，先导入一本 EPUB 或 TXT。</p>
+            <h3>{t('library.emptyTitle')}</h3>
+            <p className="empty-hint">{t('library.emptyHint')}</p>
             <button
               type="button"
               className={`import-cta${busy ? ' disabled' : ''}`}
@@ -553,7 +641,7 @@ export function App() {
               onClick={() => void startImport()}
             >
               <IconPlus size={16} />
-              导入第一本书
+              {t('library.importFirst')}
             </button>
           </section>
         ) : (
@@ -568,31 +656,37 @@ export function App() {
                       type="button"
                       className="book-open"
                       onClick={() => void openBook(book)}
-                      aria-label={`打开《${book.title}》`}
+                      aria-label={t('library.openBook', { title: book.title })}
                     >
                       <span className={`book-cover tone-${tone}`}>
                         <span className="cover-kicker">{book.format.toUpperCase()}</span>
                         <span className="cover-title">{book.title}</span>
                         <span className="cover-rule" />
-                        <span className="cover-author">{book.author || '佚名'}</span>
+                        <span className="cover-author">
+                          {book.author || t('common.unknownAuthor')}
+                        </span>
                         <span className="cover-foot">
                           <span>{book.lang.toUpperCase()}</span>
-                          <span>{isActive ? '继续阅读' : '可阅读'}</span>
+                          <span>
+                            {isActive ? t('library.continue') : t('library.readable')}
+                          </span>
                         </span>
                       </span>
                       <span className="book-meta">
                         <span className="book-title">{book.title}</span>
-                        <span className="book-sub">{book.author || '佚名'}</span>
+                        <span className="book-sub">
+                          {book.author || t('common.unknownAuthor')}
+                        </span>
                         <span className="book-status">
                           <span className="book-status-dot" aria-hidden="true" />
-                          {book.format.toUpperCase()} · 已就绪
+                          {book.format.toUpperCase()} · {t('library.ready')}
                         </span>
                       </span>
                     </button>
                     <button
                       type="button"
                       className="book-menu"
-                      aria-label="书籍操作"
+                      aria-label={t('library.bookActions')}
                       onClick={() => setSheetBook(book)}
                     >
                       <IconMore size={17} />
@@ -605,7 +699,7 @@ export function App() {
         )}
       </div>
 
-      <TabBar active="library" onSelect={selectTab} />
+      <TabBar active="library" onSelect={selectTab} t={t} />
 
       {sheetBook ? (
         <div
@@ -617,7 +711,12 @@ export function App() {
             }
           }}
         >
-          <section className="sheet" role="dialog" aria-modal="true" aria-label="书籍操作">
+          <section
+            className="sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('library.bookActions')}
+          >
             <div className="sheet-grabber" aria-hidden="true" />
             <header className="sheet-book">
               <span className={`sheet-cover tone-${coverTone(sheetBook.id)}`} aria-hidden="true">
@@ -625,12 +724,12 @@ export function App() {
               </span>
               <div className="sheet-book-copy">
                 <h2>{sheetBook.title}</h2>
-                <p>{sheetBook.author || '佚名'}</p>
+                <p>{sheetBook.author || t('common.unknownAuthor')}</p>
               </div>
               <button
                 type="button"
                 className="icon-button"
-                aria-label="关闭书籍操作"
+                aria-label={t('library.closeActions')}
                 onClick={() => setSheetBook(null)}
               >
                 <IconX size={18} />
@@ -644,32 +743,32 @@ export function App() {
                 onClick={() => void openBook(sheetBook)}
               >
                 <IconChevronRight size={18} />
-                开始阅读
+                {t('library.startReading')}
               </button>
               <div className="sheet-action" aria-hidden="true">
                 <IconInfo size={18} />
-                书籍信息
+                {t('library.bookInfo')}
                 <small>{sheetBook.format.toUpperCase()}</small>
               </div>
             </div>
 
             <div className="sheet-details">
               <div className="sheet-detail">
-                <span>格式</span>
+                <span>{t('library.format')}</span>
                 <strong>{sheetBook.format.toUpperCase()}</strong>
               </div>
               <div className="sheet-detail">
-                <span>语言</span>
+                <span>{t('library.language')}</span>
                 <strong>{sheetBook.lang.toUpperCase()}</strong>
               </div>
               <div className="sheet-detail">
-                <span>导入时间</span>
-                <strong>{formatImportDate(sheetBook.importedAt)}</strong>
+                <span>{t('library.importedAt')}</span>
+                <strong>{formatImportDate(sheetBook.importedAt, language)}</strong>
               </div>
             </div>
 
             <button type="button" className="sheet-cancel" onClick={() => setSheetBook(null)}>
-              取消
+              {t('common.cancel')}
             </button>
           </section>
         </div>

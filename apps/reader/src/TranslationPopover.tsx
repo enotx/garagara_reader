@@ -1,6 +1,7 @@
 import { LlmError } from '@garagara/llm';
 import { useEffect, useRef, useState } from 'react';
 
+import { translator, type AppLanguage } from './i18n.js';
 import { IconCheck, IconChevronRight, IconCopy, IconX } from './icons';
 import { describeLlmError } from './llm-errors.js';
 import { loadTranslation, type LlmRuntime } from './llm.js';
@@ -17,16 +18,19 @@ type TranslationState =
 export function TranslationPopover({
   sentence,
   placement,
+  language,
   llm,
   onClose,
   onOpenSettings,
 }: {
   sentence: string;
   placement: 'top' | 'bottom';
+  language: AppLanguage;
   llm?: LlmRuntime;
   onClose: () => void;
   onOpenSettings: () => void;
 }) {
+  const t = translator(language);
   const [state, setState] = useState<TranslationState>({ status: 'idle' });
   const [copied, setCopied] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
@@ -65,7 +69,7 @@ export function TranslationPopover({
       if (error instanceof LlmError && error.kind === 'aborted') {
         return;
       }
-      setState({ status: 'error', message: describeLlmError(error) });
+      setState({ status: 'error', message: describeLlmError(error, language) });
     }
   }
 
@@ -106,23 +110,23 @@ export function TranslationPopover({
       className={`translation-popover ${placement}`}
       data-translation-popover
       data-translation-status={state.status}
-      aria-label="整句翻译"
+      aria-label={t('translation.aria')}
     >
       <header className="translation-header">
         <div className="translation-heading">
-          <span className="word-card-kicker">整句 · 结合上下文</span>
-          <h3>翻译</h3>
+          <span className="word-card-kicker">{t('translation.kicker')}</span>
+          <h3>{t('translation.title')}</h3>
         </div>
         <div className="translation-header-actions">
           {ready ? (
             <span className="word-source-badge" data-translation-source={state.source}>
-              {state.source === 'cache' ? '缓存' : 'AI'}
+              {state.source === 'cache' ? t('common.cache') : t('common.ai')}
             </span>
           ) : null}
           <button
             type="button"
             className="icon-button word-card-close"
-            aria-label="关闭翻译"
+            aria-label={t('translation.close')}
             onClick={onClose}
           >
             <IconX size={18} />
@@ -134,7 +138,7 @@ export function TranslationPopover({
 
       {state.status === 'loading' ? (
         <p className="translation-loading" role="status">
-          正在翻译整句…
+          {t('translation.loading')}
         </p>
       ) : null}
 
@@ -152,9 +156,9 @@ export function TranslationPopover({
 
       {state.status === 'not-configured' ? (
         <p className="translation-message">
-          尚未配置 AI 服务。
+          {t('translation.notConfigured')}
           <button type="button" className="word-inline-action" onClick={onOpenSettings}>
-            去设置
+            {t('common.goSettings')}
             <IconChevronRight size={14} />
           </button>
         </p>
@@ -168,15 +172,15 @@ export function TranslationPopover({
           disabled={!ready}
         >
           {copied ? <IconCheck size={15} /> : <IconCopy size={15} />}
-          {copied ? '已复制' : '复制'}
+          {copied ? t('common.copied') : t('common.copy')}
         </button>
         {state.status === 'error' || state.status === 'offline' ? (
           <button type="button" className="translation-action" onClick={() => void run()}>
-            重试
+            {t('common.retry')}
           </button>
         ) : null}
         <button type="button" className="translation-action" onClick={onClose}>
-          关闭
+          {t('common.close')}
         </button>
       </div>
     </aside>

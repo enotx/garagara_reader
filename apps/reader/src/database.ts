@@ -4,14 +4,35 @@ import { BrowserSqliteAdapter } from '@garagara/storage/browser';
 import { Capacitor } from '@capacitor/core';
 
 let databasePromise: Promise<SqliteAdapter> | undefined;
+let snapshotFlushInstalled = false;
 
-/** Opens the persistent native database on iOS, or the in-memory web adapter. */
+function installSnapshotFlush(adapter: BrowserSqliteAdapter): void {
+  if (snapshotFlushInstalled || typeof window === 'undefined') {
+    return;
+  }
+  snapshotFlushInstalled = true;
+  const flush = (): void => {
+    void adapter.flushSnapshot().catch(() => undefined);
+  };
+  window.addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      flush();
+    }
+  });
+}
+
+/** Opens the persistent native database on iOS, or the snapshotted web adapter. */
 export function openDatabase(): Promise<SqliteAdapter> {
   if (!databasePromise) {
     databasePromise = (async () => {
-      const adapter = Capacitor.isNativePlatform()
-        ? await (await import('./native-sqlite.js')).openNativeSqlite()
-        : await BrowserSqliteAdapter.open();
+      if (Capacitor.isNativePlatform()) {
+        const adapter = await (await import('./native-sqlite.js')).openNativeSqlite();
+        await migrate(adapter);
+        return adapter;
+      }
+      const adapter = await BrowserSqliteAdapter.open();
+      installSnapshotFlush(adapter);
       await migrate(adapter);
       return adapter;
     })();

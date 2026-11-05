@@ -8,6 +8,7 @@ import type { WordInContextResult } from '@garagara/llm';
 import { useEffect, useRef, useState } from 'react';
 
 import { loadDictionary } from './dictionary.js';
+import { translator, type AppLanguage } from './i18n.js';
 import { IconChevronRight, IconX } from './icons';
 import type { HitTestResult } from './hit-test.js';
 import { describeLlmError } from './llm-errors.js';
@@ -42,6 +43,10 @@ function contextSettings(runtime: LlmRuntime | undefined): ReaderLlmSettings | u
   return runtime?.settings;
 }
 
+function dictionaryText(entry: DictionaryEntry, explainLanguage: AppLanguage): string {
+  return explainLanguage === 'en' && entry.definition ? entry.definition : entry.translation;
+}
+
 export function WordCard({
   hit,
   sentence,
@@ -49,6 +54,7 @@ export function WordCard({
   adapter,
   bookId,
   placement,
+  language,
   onClose,
   onOpenSettings,
 }: {
@@ -58,9 +64,12 @@ export function WordCard({
   adapter?: SqliteAdapter;
   bookId?: string;
   placement: 'top' | 'bottom';
+  language: AppLanguage;
   onClose: () => void;
   onOpenSettings?: () => void;
 }) {
+  const t = translator(language);
+  const explainLanguage = llm?.settings.explainLanguage ?? 'zh';
   const initialKey = cardKey(hit);
   const [data, setData] = useState<CardData>({
     hitKey: initialKey,
@@ -75,6 +84,7 @@ export function WordCard({
   const [vocabEntry, setVocabEntry] = useState<VocabEntry | null>(null);
   const [vocabBusy, setVocabBusy] = useState(false);
   const [context, setContext] = useState<ContextView>({ status: 'idle' });
+  const [contextRequested, setContextRequested] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const pointerStart = useRef<number | null>(null);
   const cardRef = useRef<HTMLElement>(null);
@@ -101,6 +111,7 @@ export function WordCard({
       wordEntries: [],
     });
     setOnlyWord(false);
+    setContextRequested(false);
     setExpanded(false);
     loadDictionary()
       .then(async (dictionary) => {
@@ -129,7 +140,7 @@ export function WordCard({
         const lookup = async (candidates: string[]): Promise<DictionaryEntry[]> => {
           const found: DictionaryEntry[] = [];
           for (const candidate of candidates.slice(0, 4)) {
-            found.push(...(await dictionary.lookup(candidate, 'en', 'zh')));
+            found.push(...(await dictionary.lookup(candidate, 'en', explainLanguage)));
             if (found.length > 0) {
               break;
             }
@@ -201,7 +212,7 @@ export function WordCard({
       if (error instanceof LlmError && error.kind === 'aborted') {
         return;
       }
-      setContext({ status: 'error', message: describeLlmError(error) });
+      setContext({ status: 'error', message: describeLlmError(error, language) });
     }
   }
 
@@ -219,7 +230,7 @@ export function WordCard({
     if (!settings.autoRequest) {
       return;
     }
-    if (settings.strategy === 'dictionary-first' && data.entries.length > 0) {
+    if (settings.strategy === 'dictionary-first') {
       return;
     }
     void runContext();
@@ -232,7 +243,6 @@ export function WordCard({
     hitKey,
     data.hitKey,
     data.loading,
-    data.entries.length,
     llm?.settings.baseURL,
     llm?.settings.model,
     llm?.settings.strategy,
@@ -256,11 +266,14 @@ export function WordCard({
       : `${hit.token.surface} → ${data.wordLemma}`
     : hit.token.surface.toLowerCase() === title.toLowerCase()
       ? data.phrase
-        ? '短语'
+        ? t('word.phrase')
         : ''
-      : `${hit.token.surface} → ${title}${data.phrase ? ' · 短语' : ''}`;
+      : `${hit.token.surface} → ${title}${data.phrase ? ` · ${t('word.phrase')}` : ''}`;
   const settings = contextSettings(llm);
   const configured = settings ? isLlmConfigured(settings) : false;
+  const dictionaryFirst = settings?.strategy === 'dictionary-first';
+  const showContextSection = !dictionaryFirst || contextRequested;
+  const showAiTrigger = dictionaryFirst && !contextRequested;
   const showManualButton =
     context.status === 'idle' || context.status === 'error' || context.status === 'offline';
 
@@ -352,7 +365,8 @@ export function WordCard({
       <header className="word-card-header">
         <div className="word-card-titleblock">
           <span className="word-card-kicker">
-            {data.phrase && !showWordOnly ? '短语' : '词条'} · {expanded ? '全屏' : '上滑展开'}
+            {data.phrase && !showWordOnly ? t('word.phrase') : t('word.entry')} ·{' '}
+            {expanded ? t('word.fullscreen') : t('word.expand')}
           </span>
           <h3>{title}</h3>
           {forms ? <p className="word-forms">{forms}</p> : null}
@@ -362,7 +376,7 @@ export function WordCard({
             <button
               type="button"
               className={`word-star${vocabEntry ? ' is-collected' : ''}`}
-              aria-label={vocabEntry ? '移出生词本' : '加入生词本'}
+              aria-label={vocabEntry ? t('word.removeVocab') : t('word.addVocab')}
               aria-pressed={Boolean(vocabEntry)}
               disabled={vocabBusy}
               onClick={() => void toggleVocab()}
@@ -373,7 +387,7 @@ export function WordCard({
           <button
             type="button"
             className="icon-button word-card-close"
-            aria-label="关闭词卡"
+            aria-label={t('word.close')}
             onClick={onClose}
           >
             <IconX size={18} />
@@ -381,70 +395,74 @@ export function WordCard({
         </div>
       </header>
 
-      <section className="word-context-ai" aria-label="本句含义" data-word-context>
-        <div className="word-section-head">
-          <h4>本句含义</h4>
-          {context.status === 'ready' ? (
-            <span className="word-source-badge" data-context-source={context.source}>
-              {context.source === 'cache' ? '缓存' : 'AI'}
-            </span>
-          ) : null}
-        </div>
+      {showContextSection ? (
+        <section className="word-context-ai" aria-label={t('word.context')} data-word-context>
+          <div className="word-section-head">
+            <h4>{t('word.context')}</h4>
+            {context.status === 'ready' ? (
+              <span className="word-source-badge" data-context-source={context.source}>
+                {context.source === 'cache' ? t('common.cache') : t('common.ai')}
+              </span>
+            ) : null}
+          </div>
 
-        {context.status === 'loading' ? (
-          <p className="word-context-loading" role="status">
-            正在结合上下文理解…
-          </p>
-        ) : null}
-
-        {context.status === 'ready' ? (
-          <>
-            <p className="word-context-meaning" data-context-meaning>
-              {context.result.meaning}
+          {context.status === 'loading' ? (
+            <p className="word-context-loading" role="status">
+              {t('word.contextLoading')}
             </p>
-            {context.result.pos ? <p className="word-context-pos">{context.result.pos}</p> : null}
-            {context.result.phrase ? (
-              <p className="word-context-phrase">
-                {context.result.phrase.text}
-                <span> · {context.result.phrase.lemma}</span>
+          ) : null}
+
+          {context.status === 'ready' ? (
+            <>
+              <p className="word-context-meaning" data-context-meaning>
+                {context.result.meaning}
               </p>
-            ) : null}
-          </>
-        ) : null}
+              {context.result.pos ? <p className="word-context-pos">{context.result.pos}</p> : null}
+              {context.result.phrase ? (
+                <p className="word-context-phrase">
+                  {context.result.phrase.text}
+                  <span> · {context.result.phrase.lemma}</span>
+                </p>
+              ) : null}
+            </>
+          ) : null}
 
-        {context.status === 'offline' ? (
-          <p className="word-context-message">{context.message}仍可使用下方词典释义。</p>
-        ) : null}
+          {context.status === 'offline' ? (
+            <p className="word-context-message">
+              {t('word.offlineHint', { message: context.message })}
+            </p>
+          ) : null}
 
-        {context.status === 'error' ? (
-          <p className="word-context-message is-error">{context.message}</p>
-        ) : null}
+          {context.status === 'error' ? (
+            <p className="word-context-message is-error">{context.message}</p>
+          ) : null}
 
-        {context.status === 'not-configured' ? (
-          <p className="word-context-message">
-            尚未配置 AI 服务。
-            {onOpenSettings ? (
-              <button type="button" className="word-inline-action" onClick={onOpenSettings}>
-                去设置
-                <IconChevronRight size={14} />
-              </button>
-            ) : null}
-          </p>
-        ) : null}
+          {context.status === 'not-configured' ? (
+            <p className="word-context-message">
+              {t('word.notConfigured')}
+              {onOpenSettings ? (
+                <button type="button" className="word-inline-action" onClick={onOpenSettings}>
+                  {t('common.goSettings')}
+                  <IconChevronRight size={14} />
+                </button>
+              ) : null}
+            </p>
+          ) : null}
 
-        {showManualButton ? (
-          <button
-            type="button"
-            className="word-context-button"
-            onClick={() => void runContext()}
-            disabled={!configured}
-          >
-            {context.status === 'error' || context.status === 'offline'
-              ? '重试本句含义'
-              : '查询本句含义'}
-          </button>
-        ) : null}
-      </section>
+          {showManualButton ? (
+            <button
+              type="button"
+              className="word-context-button"
+              onClick={() => void runContext()}
+              disabled={!configured}
+            >
+              {context.status === 'error' || context.status === 'offline'
+                ? t('word.retryContext')
+                : t('word.queryContext')}
+            </button>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="word-card-actions">
         {data.phrase ? (
@@ -453,27 +471,24 @@ export function WordCard({
             className="word-card-action"
             onClick={() => setOnlyWord((value) => !value)}
           >
-            {showWordOnly ? '看短语' : `只看 ${hit.token.surface}`}
-          </button>
-        ) : null}
-        {onOpenSettings ? (
-          <button type="button" className="word-card-action" onClick={onOpenSettings}>
-            AI 设置
+            {showWordOnly ? t('word.showPhrase') : t('word.onlyWord', { word: hit.token.surface })}
           </button>
         ) : null}
       </div>
 
-      {data.loading ? <p className="muted word-card-status">正在查词典…</p> : null}
+      {data.loading ? (
+        <p className="muted word-card-status">{t('word.loadingDict')}</p>
+      ) : null}
       {!data.loading && !data.available ? (
-        <p className="muted word-card-status">词典文件不可用。</p>
+        <p className="muted word-card-status">{t('word.dictUnavailable')}</p>
       ) : null}
       {!data.loading && data.available && entriesToShow.length === 0 ? (
-        <p className="muted word-card-status">没有找到释义。</p>
+        <p className="muted word-card-status">{t('word.noEntry')}</p>
       ) : null}
       {entriesToShow.length > 0 ? (
-        <section className="word-dictionary" aria-label="词典释义">
+        <section className="word-dictionary" aria-label={t('word.dictionary')}>
           <div className="word-section-head">
-            <h4>词典</h4>
+            <h4>{t('word.dictionary')}</h4>
           </div>
           <div className="word-entries">
             {entriesToShow.map((entry, index) => (
@@ -482,12 +497,27 @@ export function WordCard({
                   {entry.headword}
                   {entry.pos ? <span className="word-pos">{entry.pos}</span> : null}
                 </h4>
-                <p className="word-translation">{entry.translation}</p>
+                <p className="word-translation">
+                  {dictionaryText(entry, explainLanguage)}
+                </p>
                 {entry.bnc ? <p className="word-rank">BNC {entry.bnc}</p> : null}
               </article>
             ))}
           </div>
         </section>
+      ) : null}
+
+      {showAiTrigger ? (
+        <button
+          type="button"
+          className="word-context-button word-ai-trigger"
+          onClick={() => {
+            setContextRequested(true);
+            void runContext();
+          }}
+        >
+          {t('word.aiMeaning')}
+        </button>
       ) : null}
     </aside>
   );

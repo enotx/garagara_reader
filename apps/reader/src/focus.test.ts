@@ -5,6 +5,7 @@ import {
   firstSegmentOnPage,
   focusPositions,
   initialFocusPosition,
+  isFocusBackPoint,
   positionForSentence,
   sentenceIdForSegment,
   stepFocus,
@@ -83,5 +84,14 @@ describe('focus positions', () => {
     expect(sentenceIdForSegment(chunkSegments[1]!.segment)).toBe('s1');
     expect(positionForSentence(chunkSegments, 's2')?.segment.id).toBe('s2:k0');
     expect(positionForSentence(sentenceSegments, 's3')?.page).toBe(1);
+  });
+
+  it('recognizes the top-left Focus back zone', () => {
+    const bounds = { left: 100, top: 200, width: 400, height: 800 };
+    expect(isFocusBackPoint({ x: 100, y: 200 }, bounds)).toBe(true);
+    expect(isFocusBackPoint({ x: 220, y: 440 }, bounds)).toBe(true);
+    expect(isFocusBackPoint({ x: 221, y: 440 }, bounds)).toBe(false);
+    expect(isFocusBackPoint({ x: 220, y: 441 }, bounds)).toBe(false);
+    expect(isFocusBackPoint({ x: 99, y: 220 }, bounds)).toBe(false);
   });
 });

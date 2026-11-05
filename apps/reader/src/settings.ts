@@ -1,6 +1,8 @@
 import type { SqliteAdapter } from '@garagara/storage';
 import { getSetting, setSetting } from '@garagara/storage';
 
+import { isAppLanguage, type AppLanguage } from './i18n.js';
+
 export type DefinitionStrategy = 'online-first' | 'dictionary-first';
 export type PreprocessPolicy = 'off' | 'wifi' | 'always';
 export type NetworkKind = 'wifi' | 'cellular' | 'unknown';
@@ -18,6 +20,10 @@ export interface ReaderLlmSettings {
   preprocess: PreprocessPolicy;
   /** Number of chapters after the current one to preprocess (Spec §9.4). */
   preprocessChapters: number;
+  /** Language used by the interface. */
+  uiLanguage: AppLanguage;
+  /** Language used for AI meanings and sentence translations. */
+  explainLanguage: AppLanguage;
 }
 
 export const DEFAULT_LLM_SETTINGS: ReaderLlmSettings = {
@@ -27,6 +33,8 @@ export const DEFAULT_LLM_SETTINGS: ReaderLlmSettings = {
   autoRequest: true,
   preprocess: 'wifi',
   preprocessChapters: 1,
+  uiLanguage: 'zh',
+  explainLanguage: 'zh',
 };
 
 const SETTING_KEYS = {
@@ -36,6 +44,8 @@ const SETTING_KEYS = {
   autoRequest: 'llm.autoRequest',
   preprocess: 'llm.preprocess',
   preprocessChapters: 'llm.preprocessChapters',
+  uiLanguage: 'ui.language',
+  explainLanguage: 'explain.language',
 } as const;
 
 function asString(value: unknown, fallback: string): string {
@@ -56,6 +66,10 @@ function asPreprocess(value: unknown, fallback: PreprocessPolicy): PreprocessPol
 
 function asChapterCount(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
+function asLanguage(value: unknown, fallback: AppLanguage): AppLanguage {
+  return isAppLanguage(value) ? value : fallback;
 }
 
 /**
@@ -81,6 +95,8 @@ export function normalizeLlmSettings(values: Readonly<Record<string, unknown>>):
       values.preprocessChapters,
       DEFAULT_LLM_SETTINGS.preprocessChapters,
     ),
+    uiLanguage: asLanguage(values.uiLanguage, DEFAULT_LLM_SETTINGS.uiLanguage),
+    explainLanguage: asLanguage(values.explainLanguage, DEFAULT_LLM_SETTINGS.explainLanguage),
   };
 }
 
@@ -95,6 +111,8 @@ export async function readLlmSettings(adapter: SqliteAdapter): Promise<ReaderLlm
   const autoRequest = await getSetting<unknown>(adapter, SETTING_KEYS.autoRequest);
   const preprocess = await getSetting<unknown>(adapter, SETTING_KEYS.preprocess);
   const preprocessChapters = await getSetting<unknown>(adapter, SETTING_KEYS.preprocessChapters);
+  const uiLanguage = await getSetting<unknown>(adapter, SETTING_KEYS.uiLanguage);
+  const explainLanguage = await getSetting<unknown>(adapter, SETTING_KEYS.explainLanguage);
   return normalizeLlmSettings({
     baseURL,
     model,
@@ -102,6 +120,8 @@ export async function readLlmSettings(adapter: SqliteAdapter): Promise<ReaderLlm
     autoRequest,
     preprocess,
     preprocessChapters,
+    uiLanguage,
+    explainLanguage,
   });
 }
 
@@ -116,4 +136,14 @@ export async function writeLlmSettings(
   await setSetting(adapter, SETTING_KEYS.autoRequest, settings.autoRequest, now);
   await setSetting(adapter, SETTING_KEYS.preprocess, settings.preprocess, now);
   await setSetting(adapter, SETTING_KEYS.preprocessChapters, settings.preprocessChapters, now);
+  await setSetting(adapter, SETTING_KEYS.uiLanguage, settings.uiLanguage, now);
+  await setSetting(adapter, SETTING_KEYS.explainLanguage, settings.explainLanguage, now);
+}
+
+/**
+ * Decides whether a save should write the API key. An untouched field means
+ * the platform-stored key must be kept, even when the UI does not echo it.
+ */
+export function apiKeyUpdateFor(keyTouched: boolean, keyDraft: string): string | undefined {
+  return keyTouched ? keyDraft : undefined;
 }

@@ -185,8 +185,12 @@ test('uses the cache offline and never calls the network', async ({ page }) => {
 });
 
 test('shows a manual button in dictionary-first mode', async ({ page }) => {
+  let contextCalls = 0;
   await page.route(MOCK_ENDPOINT, async (route) => {
     const body = route.request().postDataJSON() as { response_format?: unknown };
+    if (body.response_format) {
+      contextCalls += 1;
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -223,9 +227,74 @@ test('shows a manual button in dictionary-first mode', async ({ page }) => {
   }
   const card = page.locator('[data-word-card]');
   await expect(card).toHaveAttribute('data-context-status', 'idle');
-  await expect(card.getByRole('button', { name: '查询本句含义' })).toBeVisible();
+  await expect(card.locator('[data-word-context]')).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'AI释义' })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'AI 设置' })).toHaveCount(0);
+  expect(contextCalls).toBe(0);
 
-  await card.getByRole('button', { name: '查询本句含义' }).click();
+  await card.getByRole('button', { name: 'AI释义' }).click();
   await expect(card).toHaveAttribute('data-context-status', 'ready', { timeout: 10_000 });
+  await expect(card.locator('[data-word-context]')).toBeVisible();
   await expect(card).toContainText('考虑');
+  expect(contextCalls).toBe(1);
+});
+
+test('uses the selected explanation language in LLM prompts', async ({ page }) => {
+  let prompt = '';
+  await page.route(MOCK_ENDPOINT, async (route) => {
+    const body = route.request().postDataJSON() as {
+      response_format?: unknown;
+      messages?: Array<{ content: string }>;
+    };
+    if (body.response_format) {
+      prompt = body.messages?.map((message) => message.content).join('\n') ?? '';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          model: 'mock-model',
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: JSON.stringify({ lemma: 'take', pos: 'v.', meaning: '取る' }),
+              },
+            },
+          ],
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        model: 'mock-model',
+        choices: [{ message: { role: 'assistant', content: 'OK' } }],
+      }),
+    });
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByLabel('Base URL').fill('http://127.0.0.1:5173/mock/v1');
+  await page.getByLabel('模型').fill('mock-model');
+  await page.getByLabel('API Key').fill('test-key');
+  await page.getByLabel('解释语言').selectOption('ja');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('设置已保存。')).toBeVisible();
+
+  await page.getByRole('button', { name: '书架', exact: true }).click();
+  await importCardBook(page);
+  const point = await wordPoint(page, 'took');
+  expect(point).not.toBeNull();
+  if (point) {
+    await page.mouse.click(point.x, point.y);
+  }
+  await expect(page.locator('[data-word-card]')).toHaveAttribute(
+    'data-context-status',
+    'ready',
+    { timeout: 10_000 },
+  );
+  expect(prompt).toContain('Japanese');
 });

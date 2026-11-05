@@ -12,10 +12,10 @@ import {
 } from '@garagara/llm';
 import type { SqliteAdapter } from '@garagara/storage';
 
+import { translate } from './i18n.js';
 import { isLlmConfigured, type ReaderLlmSettings } from './settings.js';
 
 const BOOK_LANG = 'en';
-const EXPLAIN_LANG = 'zh';
 
 export interface LlmRuntime {
   adapter: SqliteAdapter;
@@ -46,7 +46,7 @@ function cacheInput(runtime: LlmRuntime, target: WordContextTarget): LlmCacheKey
     sentence: target.sentence,
     targetWord: target.sentence.slice(target.start, target.end),
     l2: BOOK_LANG,
-    explainLang: EXPLAIN_LANG,
+    explainLang: runtime.settings.explainLanguage,
     model: runtime.settings.model,
     promptVersion: promptVersionFor('wordInContext'),
   };
@@ -57,7 +57,7 @@ function translationCacheInput(runtime: LlmRuntime, sentence: string): LlmCacheK
     task: 'translateSentence',
     sentence,
     l2: BOOK_LANG,
-    explainLang: EXPLAIN_LANG,
+    explainLang: runtime.settings.explainLanguage,
     model: runtime.settings.model,
     promptVersion: promptVersionFor('translateSentence'),
   };
@@ -105,7 +105,10 @@ export async function loadWordContext(
     return { status: 'ready', result: cached, source: 'cache' };
   }
   if (!options.allowNetwork) {
-    return { status: 'offline', message: '当前处于离线状态，且没有缓存。' };
+    return {
+      status: 'offline',
+      message: translate(runtime.settings.uiLanguage, 'llm.offlineNoCache'),
+    };
   }
 
   const provider = createProvider(runtime);
@@ -114,7 +117,7 @@ export async function loadWordContext(
       sentence: target.sentence,
       targetStart: target.start,
       targetEnd: target.end,
-      explainLang: EXPLAIN_LANG,
+      explainLang: runtime.settings.explainLanguage,
     }),
     responseFormat: 'json',
     ...(options.signal ? { signal: options.signal } : {}),
@@ -143,12 +146,18 @@ export async function loadTranslation(
     return { status: 'ready', translation: cached.translation, source: 'cache' };
   }
   if (!options.allowNetwork) {
-    return { status: 'offline', message: '当前处于离线状态，且没有缓存。' };
+    return {
+      status: 'offline',
+      message: translate(runtime.settings.uiLanguage, 'llm.offlineNoCache'),
+    };
   }
 
   const provider = createProvider(runtime);
   const completion = await provider.complete({
-    messages: buildTranslateSentenceMessages({ sentence, explainLang: EXPLAIN_LANG }),
+    messages: buildTranslateSentenceMessages({
+      sentence,
+      explainLang: runtime.settings.explainLanguage,
+    }),
     responseFormat: 'json',
     ...(options.signal ? { signal: options.signal } : {}),
   });
@@ -163,7 +172,7 @@ export async function testLlmConnection(
   apiKey: string,
 ): Promise<string> {
   if (!isLlmConfigured(settings)) {
-    throw new Error('请先填写 Base URL 和模型');
+    throw new Error(translate(settings.uiLanguage, 'llm.notConfigured'));
   }
   const provider = new OpenAiCompatibleProvider({
     baseURL: settings.baseURL,

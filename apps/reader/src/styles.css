@@ -1754,6 +1754,27 @@ button:disabled {
   flex: 0 0 9rem;
 }
 
+.edge-turn-field {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-low);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edge-turn-field input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+}
+
 /* Word card */
 .word-card {
   position: absolute;
@@ -2083,6 +2104,13 @@ button:disabled {
   border-radius: 999px;
 }
 
+.settings-save-button {
+  flex: 0 0 auto;
+  min-height: 2.5rem;
+  padding: 0 1.1rem;
+  white-space: nowrap;
+}
+
 .settings-shell {
   width: min(100%, 46rem);
   margin: 0 auto;
@@ -2174,6 +2202,29 @@ button:disabled {
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 0.86rem;
+}
+
+.settings-field select {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background-color: var(--surface-low);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.settings-language-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 34rem) {
+  .settings-language-fields {
+    grid-template-columns: 1fr;
+  }
 }
 
 .settings-field input::placeholder {
@@ -2628,6 +2679,12 @@ button:disabled {
   opacity: 0.55;
 }
 
+.word-ai-trigger {
+  width: 100%;
+  margin-top: 1rem;
+  background: var(--surface-low);
+}
+
 .word-dictionary {
   margin-top: 0.9rem;
 }
@@ -2990,4 +3047,54 @@ button:disabled {
   font-size: 0.8rem;
   font-weight: 600;
   transform: translateX(-50%);
+}
+
+/* Dictionary manager */
+.dictionary-card {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sheet);
+  background: var(--surface-low);
+}
+
+.dictionary-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dictionary-card-head h3 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-size: 1rem;
+}
+
+.dictionary-card-head p {
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.55;
+}
+
+.dictionary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--divider);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.dictionary-add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 1rem;
 }

@@ -2,24 +2,10 @@ const THEME_VALUES = ['light', 'dark', 'sepia', 'eink'] as const;
 
 export type Theme = (typeof THEME_VALUES)[number];
 
-export interface ThemeOption {
-  value: Theme;
-  label: string;
-  description: string;
-}
-
 const THEME_KEY = 'garagara.theme';
 
-/**
- * Theme registry. Add a value here and a matching
- * `:root[data-theme='…']` token block in styles.css to introduce a theme.
- */
-export const THEMES: readonly ThemeOption[] = [
-  { value: 'light', label: '浅色', description: '暖白纸张' },
-  { value: 'dark', label: '深色', description: '夜间阅读' },
-  { value: 'sepia', label: '护眼', description: '低蓝光暖纸' },
-  { value: 'eink', label: '电子墨水', description: '无动画高对比' },
-];
+/** Theme identifiers; labels live in the i18n dictionary. */
+export const THEMES: readonly Theme[] = THEME_VALUES;
 
 export function isTheme(value: string | null | undefined): value is Theme {
   return THEME_VALUES.some((theme) => theme === value);
