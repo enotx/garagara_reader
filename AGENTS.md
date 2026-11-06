@@ -32,6 +32,10 @@ MVP 范围：iOS 平台，学习语言为英语，解释语言为中文，用户
 ## 仓库结构
 ```
 apps/reader/            Vite + React 阅读器 UI
+  src/app/              应用壳、入口、全局样式、启动配置
+  src/shared/           跨功能共享：i18n、主题、设置模型、LLM、UI 图标
+  src/infra/            平台适配：SQLite、文件、Keychain、网络
+  src/features/         功能模块：library、reader、dictionary、vocab、settings
 packages/core/          导入、规范化、分句、定位、PageMap 计算等纯逻辑
 packages/lang-en/       英语语言包（分句、分词、词形还原、意群、短语匹配）
 packages/storage/       schema、migrations、存储适配器接口和 Repository

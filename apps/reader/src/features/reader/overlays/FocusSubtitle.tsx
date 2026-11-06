@@ -1,0 +1,117 @@
+import { LlmError } from '@garagara/llm';
+import { useEffect, useRef, useState } from 'react';
+
+import { translator, type AppLanguage } from '../../../shared/i18n/i18n.js';
+import { describeLlmError } from '../../../shared/llm/llm-errors.js';
+import { loadTranslation, type LlmRuntime } from '../../../shared/llm/llm.js';
+import { isLlmConfigured } from '../../../shared/settings/reader-settings.js';
+
+type SubtitleState =
+  | { status: 'loading' }
+  | { status: 'ready'; translation: string }
+  | { status: 'offline' }
+  | { status: 'not-configured' }
+  | { status: 'error'; message: string };
+
+export function FocusSubtitle({
+  sentence,
+  nextSentences,
+  placement,
+  language,
+  llm,
+}: {
+  /** Whole current sentence, even when it spans pages. */
+  sentence: string;
+  /** Following sentences for the 3-sentence prefetch. */
+  nextSentences: readonly string[];
+  placement: 'top' | 'bottom';
+  language: AppLanguage;
+  llm?: LlmRuntime;
+}) {
+  const t = translator(language);
+  const [state, setState] = useState<SubtitleState>({ status: 'loading' });
+  const controllerRef = useRef<AbortController | null>(null);
+  const nextKey = nextSentences.slice(0, 3).join('\n');
+
+  useEffect(() => {
+    controllerRef.current?.abort();
+    if (!llm || !isLlmConfigured(llm.settings)) {
+      setState({ status: 'not-configured' });
+      return;
+    }
+    const runtime = llm;
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setState({ status: 'loading' });
+    const allowNetwork = typeof navigator === 'undefined' ? true : navigator.onLine;
+
+    async function loadCurrent(): Promise<void> {
+      try {
+        const outcome = await loadTranslation(runtime, sentence, {
+          allowNetwork,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (outcome.status === 'ready') {
+          setState({ status: 'ready', translation: outcome.translation });
+        } else {
+          setState({ status: 'offline' });
+        }
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (error instanceof LlmError && error.kind === 'aborted') {
+          return;
+        }
+        setState({ status: 'error', message: describeLlmError(error, language) });
+      }
+    }
+
+    async function prefetch(): Promise<void> {
+      for (const text of nextSentences.slice(0, 3)) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        try {
+          await loadTranslation(runtime, text, {
+            allowNetwork,
+            signal: controller.signal,
+          });
+        } catch {
+          // Prefetch is best-effort; the current subtitle owns error reporting.
+        }
+      }
+    }
+
+    void (async () => {
+      await loadCurrent();
+      if (!controller.signal.aborted) {
+        await prefetch();
+      }
+    })();
+    return () => controller.abort();
+  }, [sentence, nextKey, llm?.settings.baseURL, llm?.settings.model, llm?.apiKey]);
+
+  return (
+    <aside
+      className={`focus-subtitle ${placement}`}
+      data-focus-subtitle
+      data-subtitle-status={state.status}
+      aria-live="polite"
+    >
+      <span className="focus-subtitle-label" aria-hidden="true">
+        {t('subtitle.label')}
+      </span>
+      <p>
+        {state.status === 'loading' ? t('subtitle.loading') : null}
+        {state.status === 'ready' ? state.translation : null}
+        {state.status === 'offline' ? t('subtitle.offline') : null}
+        {state.status === 'not-configured' ? t('subtitle.notConfigured') : null}
+        {state.status === 'error' ? state.message : null}
+      </p>
+    </aside>
+  );
+}
